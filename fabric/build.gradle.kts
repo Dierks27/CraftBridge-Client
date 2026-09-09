@@ -25,13 +25,16 @@ dependencies {
     // 1.21.11 snapshots: there is no client_mappings download to fetch any more. The game
     // already has real names, which is also why the shared sources compile unchanged against
     // NeoForge's copy of it.
-    modImplementation("net.fabricmc:fabric-loader:${property("fabricLoaderVersion")}")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabricApiVersion")}")
+    // Plain configurations, not modImplementation/modCompileOnly: those exist only to remap a
+    // dependency into the development mappings, and Loom does not create them at all when there
+    // is no obfuscation to undo. Mod jars are now ordinary jars.
+    implementation("net.fabricmc:fabric-loader:${property("fabricLoaderVersion")}")
+    implementation("net.fabricmc.fabric-api:fabric-api:${property("fabricApiVersion")}")
 
     // Compile against JEI's loader-agnostic API; run against the full Fabric jar.
-    modCompileOnly("mezz.jei:jei-$mc-common-api:$jei")
-    modCompileOnly("mezz.jei:jei-$mc-fabric-api:$jei")
-    modRuntimeOnly("mezz.jei:jei-$mc-fabric:$jei")
+    compileOnly("mezz.jei:jei-$mc-common-api:$jei")
+    compileOnly("mezz.jei:jei-$mc-fabric-api:$jei")
+    runtimeOnly("mezz.jei:jei-$mc-fabric:$jei")
 }
 
 // The default client and server run configurations are left as Loom generates them: this is a
