@@ -9,7 +9,8 @@
   "license": "MIT",
   "environment": "client",
   "entrypoints": {
-    "client": ["com.dierks.craftbridge.client.fabric.CraftBridgeClientFabric"]
+    "client": ["com.dierks.craftbridge.client.fabric.CraftBridgeClientFabric"],
+    "jei_mod_plugin": ["com.dierks.craftbridge.client.jei.CraftBridgeJeiPlugin"]
   },
   "depends": {
     "fabricloader": ">=${fabricLoaderVersion}",
