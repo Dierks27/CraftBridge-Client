@@ -99,7 +99,9 @@ public final class StoragePanel {
         if (index < 0) {
             return false;
         }
-        String mode = Screen.hasShiftDown() ? "ALL" : (button == 1 ? "HALF" : "ONE");
+        // hasShiftDown moved from Screen to Minecraft in 26.2; called on the instance so it
+        // compiles whichever it is.
+        String mode = Minecraft.getInstance().hasShiftDown() ? "ALL" : (button == 1 ? "HALF" : "ONE");
         StorageView.Held entry = layout.shown().get(index);
         CraftBridgeClient.get().requestPull(entry.key(), mode, (ok, message) -> {
             if (!ok && message != null && !message.isEmpty()) {
