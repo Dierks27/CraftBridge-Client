@@ -2,16 +2,22 @@ package com.dierks.craftbridge.client.jei;
 
 import mezz.jei.api.ingredients.subtypes.ISubtypeInterpreter;
 import mezz.jei.api.ingredients.subtypes.UidContext;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.network.chat.Component;
+import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.CustomData;
 
 /**
  * What makes two stacks of the same item different, as far as the server's custom items are
- * concerned: the plugin's own data (a Bukkit persistent-data container lives inside the
- * vanilla custom-data component) and the display name. Two otherwise identical iron ingots,
- * one of them the plugin's "Reinforced Ingot", become two entries in JEI's list rather than one.
+ * concerned: everything the server changed about them.
+ *
+ * <p>This is the stack's component patch — the difference between it and a plain one of its
+ * item — and not a hand-picked component or two. The server's custom items are ordinary items
+ * wearing whatever the plugin dressed them in, and which component carries the difference is
+ * the plugin's business, not ours. A textured player head differs only in {@code profile}; a
+ * place-item differs in {@code custom_data}; a renamed ingot differs in {@code custom_name}.
+ * Reading two of those three and calling it the subtype meant every head the plugin sent
+ * collapsed into one JEI entry, cycling through four items that JEI thought were the same one.
+ *
+ * <p>An empty patch means a plain item: JEI is told there is no subtype, which is the truth.
  */
 final class CatalogSubtypes implements ISubtypeInterpreter<ItemStack> {
 
@@ -22,11 +28,7 @@ final class CatalogSubtypes implements ISubtypeInterpreter<ItemStack> {
 
     @Override
     public Object getSubtypeData(ItemStack stack, UidContext context) {
-        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
-        Component name = stack.get(DataComponents.CUSTOM_NAME);
-        if (data == null && name == null) {
-            return null; // a plain one: JEI treats it as the ordinary item, which it is
-        }
-        return (data == null ? "" : data.toString()) + " " + (name == null ? "" : name.getString());
+        DataComponentPatch patch = stack.getComponentsPatch();
+        return DataComponentPatch.EMPTY.equals(patch) ? null : patch;
     }
 }
