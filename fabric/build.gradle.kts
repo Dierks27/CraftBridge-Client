@@ -1,5 +1,7 @@
 plugins {
-    id("fabric-loom") version "1.11-SNAPSHOT"
+    // Loom 1.17 is the line that knows about Minecraft 26.x; older lines cannot even find
+    // the official Mojang mappings for it.
+    id("fabric-loom") version "1.17.20"
 }
 
 val mc = property("minecraftVersion") as String
@@ -28,9 +30,5 @@ dependencies {
     modRuntimeOnly("mezz.jei:jei-$mc-fabric:$jei")
 }
 
-loom {
-    runs {
-        named("client") { client() }
-        remove(getByName("server"))
-    }
-}
+// The default client and server run configurations are left as Loom generates them: this is a
+// client mod, but a dev server run costs nothing and one less bit of build DSL can break.
