@@ -16,15 +16,16 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * What is in nearby storage, drawn beside the crafting screen.
+ * What is in nearby storage, drawn beside the crafting screen and clickable.
  *
  * <p>Without this the mod had no user-visible surface at all: it knew what was in range and
- * used it for JEI's [+], but the player could see none of it — strictly worse than the
- * phantom slots it replaced, which at least showed 36 types. The server now keeps those
- * phantoms until this panel confirms it is drawing.
+ * used it for JEI's [+], but the player could see none of it — strictly worse than the phantom
+ * slots it replaced, which at least showed 36 types and could be clicked.
  *
- * <p>Deliberately plain: item, count, most numerous first. It reads the same view the
- * craftability check reads, so what is shown and what [+] can use cannot disagree.
+ * <p>Clicks mean what they mean on a phantom slot, because the server runs them through the
+ * same code: <b>left</b> takes a stack to the cursor, <b>right</b> takes half a stack to the
+ * cursor, <b>shift</b> takes as many as fit into the inventory. The panel never moves an item
+ * itself; it names the item and the click, and the server decides the rest.
  */
 public final class StoragePanel {
 
@@ -40,63 +41,120 @@ public final class StoragePanel {
     private static final int TEXT = 0xFFE0E0E0;
     private static final int COUNT_TEXT = 0xFFFFFFFF;
 
+    /** Where the panel is and what it is showing, so drawing and clicking cannot disagree. */
+    private record Layout(int left, int gridTop, int width, int height, List<StorageView.Held> shown) {
+    }
+
     private StoragePanel() {
     }
 
-    /** Draw the panel if this screen is a crafting menu and a CraftBridge session is live. */
     public static void render(Screen screen, GuiGraphicsExtractor graphics) {
-        if (!(screen instanceof AbstractContainerScreen<?>)) {
-            return;
-        }
-        CraftBridgeClient link = CraftBridgeClient.get();
-        if (!link.sessionLive()) {
-            return;
-        }
-        List<StorageView.Held> held = sorted(link.storage());
-        if (held.isEmpty()) {
+        Layout layout = layout(screen);
+        if (layout == null) {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
         Font font = minecraft.font;
-        if (screen.width < MIN_SCREEN_WIDTH) {
-            return;
-        }
+        int top = layout.gridTop() - PADDING - font.lineHeight - PADDING;
 
-        int gridWidth = COLUMNS * CELL;
-        int panelWidth = gridWidth + PADDING * 2;
-        int headerHeight = font.lineHeight + PADDING;
-        // As many rows as fit between the top and bottom margins, and never more than we have.
-        int available = screen.height - MARGIN * 2 - headerHeight - PADDING * 2;
-        int rows = Math.max(1, available / CELL);
-        int shown = Math.min(held.size(), rows * COLUMNS);
-        rows = (shown + COLUMNS - 1) / COLUMNS;
+        graphics.fill(layout.left(), top, layout.left() + layout.width(), top + layout.height(), BACKGROUND);
+        graphics.fill(layout.left(), top, layout.left() + layout.width(), top + 1, BORDER);
+        graphics.fill(layout.left(), top + layout.height() - 1,
+                layout.left() + layout.width(), top + layout.height(), BORDER);
+        graphics.fill(layout.left(), top, layout.left() + 1, top + layout.height(), BORDER);
+        graphics.fill(layout.left() + layout.width() - 1, top,
+                layout.left() + layout.width(), top + layout.height(), BORDER);
 
-        int panelHeight = headerHeight + rows * CELL + PADDING * 2;
-        int left = MARGIN;
-        int top = Math.max(MARGIN, (screen.height - panelHeight) / 2);
+        int total = CraftBridgeClient.get().storage().all().size();
+        String header = layout.shown().size() == total
+                ? "In range: " + total
+                : "In range: " + layout.shown().size() + " of " + total;
+        graphics.text(font, Component.literal(header), layout.left() + PADDING, top + PADDING, TEXT);
 
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, BACKGROUND);
-        graphics.fill(left, top, left + panelWidth, top + 1, BORDER);
-        graphics.fill(left, top + panelHeight - 1, left + panelWidth, top + panelHeight, BORDER);
-        graphics.fill(left, top, left + 1, top + panelHeight, BORDER);
-        graphics.fill(left + panelWidth - 1, top, left + panelWidth, top + panelHeight, BORDER);
-
-        String header = held.size() == shown
-                ? "In range: " + held.size()
-                : "In range: " + shown + " of " + held.size();
-        graphics.text(font, Component.literal(header), left + PADDING, top + PADDING, TEXT);
-
-        int gridTop = top + PADDING + headerHeight;
-        for (int i = 0; i < shown; i++) {
-            StorageView.Held entry = held.get(i);
-            int x = left + PADDING + (i % COLUMNS) * CELL;
-            int y = gridTop + (i / COLUMNS) * CELL;
+        for (int i = 0; i < layout.shown().size(); i++) {
+            StorageView.Held entry = layout.shown().get(i);
+            int x = cellX(layout, i);
+            int y = cellY(layout, i);
             ItemStack stack = entry.stack();
             graphics.fakeItem(stack, x, y);
             String count = compact(entry.count());
             graphics.text(font, Component.literal(count),
                     x + CELL - 1 - font.width(count), y + CELL - 1 - font.lineHeight, COUNT_TEXT);
         }
+
+        // Only now, with a frame actually on the screen, does the server hear that it may take
+        // this player's phantom slots away.
+        CraftBridgeClient.get().panelDrew();
+    }
+
+    /**
+     * @return true when the click was the panel's, and the screen underneath should not see it
+     */
+    public static boolean click(Screen screen, double mouseX, double mouseY, int button) {
+        Layout layout = layout(screen);
+        if (layout == null) {
+            return false;
+        }
+        int index = hit(layout, mouseX, mouseY);
+        if (index < 0) {
+            return false;
+        }
+        String mode = Screen.hasShiftDown() ? "ALL" : (button == 1 ? "HALF" : "ONE");
+        StorageView.Held entry = layout.shown().get(index);
+        CraftBridgeClient.get().requestPull(entry.key(), mode, (ok, message) -> {
+            if (!ok && message != null && !message.isEmpty()) {
+                Minecraft minecraft = Minecraft.getInstance();
+                if (minecraft.player != null) {
+                    minecraft.player.sendSystemMessage(Component.literal(message));
+                }
+            }
+        });
+        return true;
+    }
+
+    /** Which entry is under the pointer, or -1. */
+    private static int hit(Layout layout, double mouseX, double mouseY) {
+        int column = (int) Math.floor((mouseX - (layout.left() + PADDING)) / CELL);
+        int row = (int) Math.floor((mouseY - layout.gridTop()) / CELL);
+        if (column < 0 || column >= COLUMNS || row < 0) {
+            return -1;
+        }
+        int index = row * COLUMNS + column;
+        return index < layout.shown().size() ? index : -1;
+    }
+
+    private static int cellX(Layout layout, int index) {
+        return layout.left() + PADDING + (index % COLUMNS) * CELL;
+    }
+
+    private static int cellY(Layout layout, int index) {
+        return layout.gridTop() + (index / COLUMNS) * CELL;
+    }
+
+    /** Null when this screen should not have a panel on it. */
+    private static Layout layout(Screen screen) {
+        if (!(screen instanceof AbstractContainerScreen<?>) || screen.width < MIN_SCREEN_WIDTH) {
+            return null;
+        }
+        CraftBridgeClient link = CraftBridgeClient.get();
+        if (!link.sessionLive()) {
+            return null;
+        }
+        List<StorageView.Held> held = sorted(link.storage());
+        if (held.isEmpty()) {
+            return null;
+        }
+        Font font = Minecraft.getInstance().font;
+        int headerHeight = font.lineHeight + PADDING;
+        int available = screen.height - MARGIN * 2 - headerHeight - PADDING * 2;
+        int rows = Math.max(1, available / CELL);
+        int count = Math.min(held.size(), rows * COLUMNS);
+        rows = (count + COLUMNS - 1) / COLUMNS;
+
+        int width = COLUMNS * CELL + PADDING * 2;
+        int height = headerHeight + rows * CELL + PADDING * 2;
+        int top = Math.max(MARGIN, (screen.height - height) / 2);
+        return new Layout(MARGIN, top + PADDING + headerHeight, width, height, held.subList(0, count));
     }
 
     /** Most numerous first: the panel is a glance, not an index. */

@@ -31,13 +31,17 @@ Both loaders are built from the same sources; download whichever jar matches you
 * **Shows you your storage.** A panel down the left of the crafting screen lists every item
   type in range with its count, most numerous first. This is the surface the phantom slots
   used to be, without their 36-type ceiling.
+* **Click to take.** Left-click takes a stack to the cursor, right-click takes half a stack,
+  shift-click takes as many as fit into your inventory — the same rules as a phantom slot,
+  because the server runs both through the same code. The mod moves no items itself: it names
+  the item and the click, and the server decides the amount from what is really in range.
 * **Keeps it current.** On opening a Linked Workbench the server sends a snapshot of every
   item type in range, then small deltas as things change. Each message carries a sequence
   number, so a dropped or reordered one is noticed rather than quietly leaving the view lying
   about counts; the mod asks for a fresh snapshot instead.
-* **Never leaves you with less.** The server keeps your phantom slots until the mod confirms
-  it has a snapshot *and is drawing it*. A handshake alone does not earn their removal, so a
-  mod that cannot show you anything falls back to the server's own view rather than to
+* **Never leaves you with less.** The server keeps your phantom slots until the panel has
+  actually drawn a frame — not when the snapshot arrives, but when it is on the screen. A mod
+  that cannot show you anything therefore falls back to the server's own view rather than to
   nothing at all.
 * **Fills the grid through the server.** JEI's [+] sends the plugin the *name of the recipe*
   and nothing else. The mod never moves an item itself and never tells the server what it has:
@@ -100,9 +104,5 @@ is in `common/`.
   announcement can be dropped as unknown. It is retried twice and then dropped.
 * **On NeoForge the channels are registered as optional**, because the other end is a Paper
   server rather than a NeoForge one. A required payload would refuse the connection outright.
-* **The panel is read-only for now.** It shows what is in range; it does not yet let you click
-  an entry to pull a stack the way the phantom slots did. Pulling still works through JEI's [+]
-  (which sources from storage) and through the Combo Chest. Click-to-pull is the next step and
-  needs a request of its own on the wire.
 * **The panel needs elbow room**: it is skipped on screens narrower than 420 scaled pixels
   rather than drawn over the crafting GUI.

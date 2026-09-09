@@ -58,6 +58,8 @@ public final class CraftBridgeClient {
     private int tick;
     private int helloAttemptsLeft;
     private int nextHelloTick;
+    /** Set once the panel has drawn and the server has been told; reset when the view goes away. */
+    private boolean drawnAcked;
     private List<LinkProtocol.CatalogEntry> catalog = List.of();
 
     private CraftBridgeClient() {
@@ -91,6 +93,7 @@ public final class CraftBridgeClient {
         pluginVersion = null;
         phantomSlotsOff = false;
         sessionLive = false;
+        drawnAcked = false;
         storage.clear();
         catalog = List.of();
         helloAttemptsLeft = 0;
@@ -167,17 +170,31 @@ public final class CraftBridgeClient {
         }
         storage.rebuild(tracker.counts(), registries);
         sessionLive = true;
-        // Tell the server we have it and are putting it in front of the player. Until it hears
-        // this it keeps the player's phantom slots, so a mod that cannot show anything leaves
-        // them with the server's own view rather than with nothing.
+        LOGGER.info("CraftBridge: {} item type(s) in range", storage.all().size());
+    }
+
+    /**
+     * Called by the storage panel once it has actually drawn a frame.
+     *
+     * <p>This, and not the arrival of a snapshot, is what tells the server it may take the
+     * player's phantom slots away. Having the data is not the same as showing it: the first
+     * release acknowledged on receipt, had nothing to draw, and left the player with nothing
+     * at all. So the acknowledgement waits for pixels.
+     */
+    public void panelDrew() {
+        if (drawnAcked || !sessionLive) {
+            return;
+        }
+        drawnAcked = true;
         send(LinkProtocol.CHANNEL_STORAGE_ACK,
                 LinkProtocol.encode(new LinkProtocol.StorageAck(tracker.sequence(), true)));
-        LOGGER.info("CraftBridge: showing {} item type(s) in range", storage.all().size());
+        LOGGER.info("CraftBridge: storage panel is drawing; told the server it can drop the phantom slots");
     }
 
     private void onSessionEnd(LinkProtocol.SessionEnd end) {
         LOGGER.info("CraftBridge: storage view closed ({})", end.reason());
         sessionLive = false;
+        drawnAcked = false;
         storage.clear();
         failAllPending(end.reason());
     }
@@ -217,6 +234,24 @@ public final class CraftBridgeClient {
         pending.put(requestId, new Pending(outcome, tick + RESULT_TIMEOUT_TICKS));
         send(LinkProtocol.CHANNEL_TRANSFER_REQUEST, LinkProtocol.encode(new LinkProtocol.TransferRequest(
                 requestId, tracker.sequence(), maxTransfer, true, recipeId == null ? "" : recipeId, slots)));
+        return true;
+    }
+
+    /**
+     * The player clicked an item in the panel. The click is named, not the amount: the server
+     * decides how much from what is in range and how much room the player has, exactly as it
+     * does for a phantom slot.
+     *
+     * @param mode {@code ONE}, {@code HALF} or {@code ALL}
+     */
+    public boolean requestPull(byte[] item, String mode, TransferOutcome outcome) {
+        if (sender == null || !sessionLive()) {
+            return false;
+        }
+        int requestId = nextRequestId++;
+        pending.put(requestId, new Pending(outcome, tick + RESULT_TIMEOUT_TICKS));
+        send(LinkProtocol.CHANNEL_PULL_REQUEST,
+                LinkProtocol.encode(new LinkProtocol.PullRequest(requestId, item, mode)));
         return true;
     }
 

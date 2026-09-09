@@ -30,6 +30,7 @@ public record LinkPayload(CustomPacketPayload.Type<LinkPayload> type, byte[] dat
             LinkProtocol.CHANNEL_HELLO,
             LinkProtocol.CHANNEL_RESYNC,
             LinkProtocol.CHANNEL_STORAGE_ACK,
+            LinkProtocol.CHANNEL_PULL_REQUEST,
             LinkProtocol.CHANNEL_TRANSFER_REQUEST);
 
     private static final Map<String, CustomPacketPayload.Type<LinkPayload>> TYPES = types();

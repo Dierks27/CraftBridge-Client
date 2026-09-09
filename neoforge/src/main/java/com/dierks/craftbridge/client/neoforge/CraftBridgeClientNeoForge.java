@@ -35,6 +35,7 @@ public final class CraftBridgeClientNeoForge {
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onLoggingOut);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onClientTick);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenRender);
+        NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenClick);
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -79,6 +80,13 @@ public final class CraftBridgeClientNeoForge {
     /** The panel decides for itself whether this screen is a crafting menu with a live session. */
     private static void onScreenRender(ScreenEvent.Render.Post event) {
         StoragePanel.render(event.getScreen(), event.getGuiGraphics());
+    }
+
+    /** Cancelling stops the screen underneath from also seeing a click the panel took. */
+    private static void onScreenClick(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (StoragePanel.click(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())) {
+            event.setCanceled(true);
+        }
     }
 
     private static String modVersion() {
