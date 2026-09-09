@@ -1,7 +1,9 @@
 plugins {
-    // Loom 1.17 is the line that knows about Minecraft 26.x; older lines cannot even find
-    // the official Mojang mappings for it.
-    id("fabric-loom") version "1.17.20"
+    // `net.fabricmc.fabric-loom`, not the older `fabric-loom` id: this one is the marker that
+    // turns obfuscation handling off entirely, which is what an unobfuscated Minecraft needs.
+    // With the plain id, Loom still insists on a `mappings` dependency there are no mappings
+    // for. 1.17 is the line that knows about Minecraft 26.x at all.
+    id("net.fabricmc.fabric-loom") version "1.17.20"
 }
 
 val mc = property("minecraftVersion") as String
@@ -20,10 +22,9 @@ sourceSets {
 dependencies {
     minecraft("com.mojang:minecraft:$mc")
     // No `mappings(...)` line, deliberately. Minecraft has shipped unobfuscated since the
-    // 1.21.11 snapshots: there is no client_mappings download to fetch any more, and asking
-    // Loom for official Mojang mappings fails outright ("Failed to find official mojang
-    // mappings for 26.2"). The game already has real names, which is also why the shared
-    // sources compile unchanged against NeoForge's copy of it.
+    // 1.21.11 snapshots: there is no client_mappings download to fetch any more. The game
+    // already has real names, which is also why the shared sources compile unchanged against
+    // NeoForge's copy of it.
     modImplementation("net.fabricmc:fabric-loader:${property("fabricLoaderVersion")}")
     modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabricApiVersion")}")
 
