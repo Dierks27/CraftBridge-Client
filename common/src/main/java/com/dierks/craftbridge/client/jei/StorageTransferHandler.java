@@ -14,6 +14,7 @@ import mezz.jei.api.recipe.transfer.IRecipeTransferHandlerHelper;
 import mezz.jei.api.recipe.transfer.RecipeTransferResult;
 import mezz.jei.api.recipe.types.IRecipeType;
 import mezz.jei.api.constants.RecipeTypes;
+import com.mojang.logging.LogUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
@@ -27,6 +28,7 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
 
 /**
  * JEI's [+] at a Linked Workbench, sourced from everything in range rather than from the 36
@@ -41,8 +43,16 @@ import java.util.Optional;
  */
 public final class StorageTransferHandler implements IRecipeTransferHandler<CraftingMenu, RecipeHolder<CraftingRecipe>> {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     /** Enough choices to describe a slot that takes a tag, without sending a novel. */
     private static final int MAX_CHOICES_PER_SLOT = 32;
+
+    /**
+     * The last thing said about a recipe, so the log carries one line per change rather than one
+     * per frame: JEI asks this question continuously while the button is on screen.
+     */
+    private String lastSaid = "";
 
     private final IRecipeTransferHandlerHelper helper;
     private final IRecipeTransferHandler<CraftingMenu, RecipeHolder<CraftingRecipe>> withoutCraftBridge;
@@ -81,7 +91,7 @@ public final class StorageTransferHandler implements IRecipeTransferHandler<Craf
             return withoutCraftBridge.transferRecipe(container, recipe, recipeSlots, player, maxTransfer, doTransfer);
         }
         List<IRecipeSlotView> inputs = recipeSlots.getSlotViews(RecipeIngredientRole.INPUT);
-        IRecipeTransferError error = check(link, inputs, player);
+        IRecipeTransferError error = check(link, inputs, player, recipeId(recipe));
         if (error != null || !doTransfer) {
             return error;
         }
@@ -93,12 +103,15 @@ public final class StorageTransferHandler implements IRecipeTransferHandler<Craf
     public IRecipeTransferError transferRecipe(IRecipeTransferContext<RecipeHolder<CraftingRecipe>, CraftingMenu> context,
                                                boolean doTransfer) {
         CraftBridgeClient link = CraftBridgeClient.get();
+        String recipe = recipeId(context.getRecipe());
         if (!link.sessionLive()) {
+            say(recipe, "stock JEI handler — no live CraftBridge session, so only the player's own"
+                    + " inventory counts");
             return withoutCraftBridge.transferRecipe(context, doTransfer);
         }
 
         List<IRecipeSlotView> inputs = context.getRecipeSlots().getSlotViews(RecipeIngredientRole.INPUT);
-        IRecipeTransferError error = check(link, inputs, context.getPlayer());
+        IRecipeTransferError error = check(link, inputs, context.getPlayer(), recipe);
         if (error != null || !doTransfer) {
             return error;
         }
@@ -116,17 +129,30 @@ public final class StorageTransferHandler implements IRecipeTransferHandler<Craf
     }
 
     /** Can this be made from what the player carries plus what is in range? */
-    private IRecipeTransferError check(CraftBridgeClient link, List<IRecipeSlotView> inputs, Player player) {
+    private IRecipeTransferError check(CraftBridgeClient link, List<IRecipeSlotView> inputs, Player player,
+                                       String recipe) {
         if (link.storage().isEmpty()) {
             // Live session, nothing in range: fall back to JEI's own message.
+            say(recipe, "CraftBridge handler, but the storage view is empty");
             return helper.createUserErrorWithTooltip(Component.translatable("jei.tooltip.error.recipe.transfer.missing"));
         }
-        List<IRecipeSlotView> missing = Craftability.missing(inputs, player, link.storage());
-        if (missing.isEmpty()) {
+        Craftability.Report report = Craftability.check(inputs, player, link.storage());
+        say(recipe, "CraftBridge handler: " + (report.ok() ? "can be made"
+                : report.missing().size() + " slot(s) unsatisfied") + " — " + report.detail());
+        if (report.ok()) {
             return null;
         }
         return helper.createUserErrorForMissingSlots(
-                Component.translatable("jei.tooltip.error.recipe.transfer.missing"), missing);
+                Component.translatable("jei.tooltip.error.recipe.transfer.missing"), report.missing());
+    }
+
+    /** One line per change of answer, not one per frame. */
+    private void say(String recipe, String what) {
+        String line = (recipe == null || recipe.isEmpty() ? "(unnamed recipe)" : recipe) + ": " + what;
+        if (!line.equals(lastSaid)) {
+            lastSaid = line;
+            LOGGER.info("CraftBridge [+] {}", line);
+        }
     }
 
     /**
