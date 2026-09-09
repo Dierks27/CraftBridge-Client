@@ -3,21 +3,28 @@ package com.dierks.craftbridge.client.jei;
 import mezz.jei.api.ingredients.subtypes.ISubtypeInterpreter;
 import mezz.jei.api.ingredients.subtypes.UidContext;
 import net.minecraft.core.component.DataComponentPatch;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
 /**
  * What makes two stacks of the same item different, as far as the server's custom items are
- * concerned: everything the server changed about them.
+ * concerned.
  *
- * <p>This is the stack's component patch — the difference between it and a plain one of its
- * item — and not a hand-picked component or two. The server's custom items are ordinary items
- * wearing whatever the plugin dressed them in, and which component carries the difference is
- * the plugin's business, not ours. A textured player head differs only in {@code profile}; a
- * place-item differs in {@code custom_data}; a renamed ingot differs in {@code custom_name}.
- * Reading two of those three and calling it the subtype meant every head the plugin sent
- * collapsed into one JEI entry, cycling through four items that JEI thought were the same one.
+ * <p>The name, when there is one. A server's custom item is a vanilla item the plugin dressed
+ * up, and the name is the part of that costume which is both stable and the thing the player
+ * is actually looking for: a "Personal Computer" is a Personal Computer whether it came out of
+ * a crafting grid, a chest or a recipe the server sent us.
  *
- * <p>An empty patch means a plain item: JEI is told there is no subtype, which is the truth.
+ * <p>The whole component patch was tried and is wrong, because not every component is part of
+ * an item's identity. A textured head carries {@code minecraft:profile}, and a profile holds a
+ * UUID and a resolution state that need not match between the copy a recipe produces and the
+ * copy in the player's inventory. Keying on all of it split one item into two: JEI knew a
+ * recipe for the one in its list and none for the one in the hand.
+ *
+ * <p>Only when there is no name at all does the patch decide, so that items told apart by
+ * nothing but a texture are still told apart. Two custom items sharing an item and a name
+ * become one entry here — they are the same item to anyone looking at them.
  */
 final class CatalogSubtypes implements ISubtypeInterpreter<ItemStack> {
 
@@ -28,6 +35,10 @@ final class CatalogSubtypes implements ISubtypeInterpreter<ItemStack> {
 
     @Override
     public Object getSubtypeData(ItemStack stack, UidContext context) {
+        Component name = stack.get(DataComponents.CUSTOM_NAME);
+        if (name != null) {
+            return name.getString();
+        }
         DataComponentPatch patch = stack.getComponentsPatch();
         return DataComponentPatch.EMPTY.equals(patch) ? null : patch;
     }
