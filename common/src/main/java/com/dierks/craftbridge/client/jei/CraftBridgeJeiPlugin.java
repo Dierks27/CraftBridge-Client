@@ -1,6 +1,7 @@
 package com.dierks.craftbridge.client.jei;
 
 import com.dierks.craftbridge.client.CatalogCache;
+import com.mojang.logging.LogUtils;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.constants.RecipeTypes;
@@ -16,6 +17,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CraftingRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
+import org.slf4j.Logger;
 
 import java.util.HashSet;
 import java.util.List;
@@ -25,6 +27,8 @@ import java.util.Set;
 @JeiPlugin
 public class CraftBridgeJeiPlugin implements IModPlugin {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     private static final Identifier UID =
             Identifier.fromNamespaceAndPath("craftbridge_client", "craftbridge");
 
@@ -33,6 +37,17 @@ public class CraftBridgeJeiPlugin implements IModPlugin {
     private static final int RECIPE_SLOT_COUNT = 9;
     private static final int INVENTORY_SLOT_START = 10;
     private static final int INVENTORY_SLOT_COUNT = 36;
+
+    /**
+     * Says so in the log, because the alternative is silence. On Fabric this class is only
+     * ever constructed if fabric.mod.json declares the {@code jei_mod_plugin} entrypoint —
+     * the {@code @JeiPlugin} annotation has CLASS retention and is what NeoForge scans, not
+     * something Fabric can see. Without that entrypoint nothing below runs and the [+] quietly
+     * falls back to JEI's own handler, which is exactly what happened in 0.2.1.
+     */
+    public CraftBridgeJeiPlugin() {
+        LOGGER.info("CraftBridge: JEI plugin loaded");
+    }
 
     @Override
     public Identifier getPluginUid() {
@@ -52,6 +67,7 @@ public class CraftBridgeJeiPlugin implements IModPlugin {
                 registration.registerSubtypeInterpreter(stack.getItem(), CatalogSubtypes.INSTANCE);
             }
         }
+        LOGGER.info("CraftBridge: registered subtypes for {} custom item base(s)", seen.size());
     }
 
     @Override
@@ -73,5 +89,6 @@ public class CraftBridgeJeiPlugin implements IModPlugin {
         registration.addRecipeTransferHandler(
                 new StorageTransferHandler(helper, helper.createUnregisteredRecipeTransferHandler(stock)),
                 RecipeTypes.CRAFTING);
+        LOGGER.info("CraftBridge: [+] handler registered for the crafting menu");
     }
 }
