@@ -94,11 +94,12 @@ is in `common/`.
 
 ## Notes
 
-* **The item catalog applies from the next JEI reload.** JEI decides its item list and its
+* **The item catalog applies from the next time you join.** JEI decides its item list and its
   subtypes when it loads its plugins, which can happen before the server has told us anything.
   The catalog is written to `config/craftbridge-client/<server>.catalog` as it arrives and read
-  back at plugin load, so a brand new custom item appears in the list after a JEI reload (F3+T)
-  or the next launch, rather than the instant it is sent.
+  back at plugin load, so a brand new custom item appears in the list the next time you connect,
+  rather than the instant it is sent. A resource reload (F3+T) is not enough: it rebuilds JEI's
+  ingredient filter without re-running its plugins, so the catalog is not re-read.
 * **The hello is sent a second after joining, not on the join tick.** A Bukkit server announces
   the channels its plugins listen on shortly after the player joins; a message sent before that
   announcement can be dropped as unknown. It is retried twice and then dropped.
