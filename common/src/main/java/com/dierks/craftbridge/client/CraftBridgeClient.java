@@ -150,6 +150,9 @@ public final class CraftBridgeClient {
     }
 
     private void onStorage(LinkProtocol.Storage message) {
+        LOGGER.info("CraftBridge: storage {} #{} with {} entr{}",
+                message.full() ? "snapshot" : "delta", message.sequence(), message.entries().size(),
+                message.entries().size() == 1 ? "y" : "ies");
         if (!tracker.apply(message)) {
             // A gap in the deltas. Applying it would leave a view that lies about counts and
             // makes JEI offer a craft the server will refuse, so ask for the whole thing.
@@ -164,9 +167,16 @@ public final class CraftBridgeClient {
         }
         storage.rebuild(tracker.counts(), registries);
         sessionLive = true;
+        // Tell the server we have it and are putting it in front of the player. Until it hears
+        // this it keeps the player's phantom slots, so a mod that cannot show anything leaves
+        // them with the server's own view rather than with nothing.
+        send(LinkProtocol.CHANNEL_STORAGE_ACK,
+                LinkProtocol.encode(new LinkProtocol.StorageAck(tracker.sequence(), true)));
+        LOGGER.info("CraftBridge: showing {} item type(s) in range", storage.all().size());
     }
 
     private void onSessionEnd(LinkProtocol.SessionEnd end) {
+        LOGGER.info("CraftBridge: storage view closed ({})", end.reason());
         sessionLive = false;
         storage.clear();
         failAllPending(end.reason());
@@ -180,6 +190,7 @@ public final class CraftBridgeClient {
     }
 
     private void onItemCatalog(byte[] payload) {
+        LOGGER.info("CraftBridge: item catalog, {} bytes", payload.length);
         catalog = LinkProtocol.decodeItemCatalog(payload).entries();
         CatalogCache.store(payload, catalog.size());
     }

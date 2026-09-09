@@ -2,6 +2,7 @@ package com.dierks.craftbridge.client.neoforge;
 
 import com.dierks.craftbridge.client.CraftBridgeClient;
 import com.dierks.craftbridge.client.LinkPayload;
+import com.dierks.craftbridge.client.ui.StoragePanel;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -9,6 +10,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
@@ -32,6 +34,7 @@ public final class CraftBridgeClientNeoForge {
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onLoggingIn);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onLoggingOut);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onClientTick);
+        NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenRender);
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -71,6 +74,11 @@ public final class CraftBridgeClientNeoForge {
 
     private static void onClientTick(ClientTickEvent.Post event) {
         CraftBridgeClient.get().clientTick();
+    }
+
+    /** The panel decides for itself whether this screen is a crafting menu with a live session. */
+    private static void onScreenRender(ScreenEvent.Render.Post event) {
+        StoragePanel.render(event.getScreen(), event.getGuiGraphics());
     }
 
     private static String modVersion() {
