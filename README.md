@@ -61,9 +61,11 @@ fabric/    Fabric entry point and metadata
 neoforge/  NeoForge entry point and metadata
 ```
 
-There is deliberately no Architectury layer. Both loaders build against official Mojang
-mappings, so one copy of the shared code compiles unchanged on either side, and each loader
-module simply adds `common/src/main/java` to its own source set.
+There is deliberately no Architectury layer. Minecraft ships unobfuscated from the 1.21.11
+snapshots onwards, so both loaders build against the same real names: one copy of the shared
+code compiles unchanged on either side, and each loader module simply adds
+`common/src/main/java` to its own source set. (This is also why the Fabric module declares no
+`mappings` dependency — there are no mappings left to apply.)
 
 `common/src/main/java/com/dierks/craftbridge/link/` is **the same code as the plugin's own
 `link` package**, copied rather than shared. It is the wire contract: pure framing, no

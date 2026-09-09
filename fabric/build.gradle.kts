@@ -19,8 +19,11 @@ sourceSets {
 
 dependencies {
     minecraft("com.mojang:minecraft:$mc")
-    // Mojang mappings, so the shared sources use the same names NeoForge does.
-    mappings(loom.officialMojangMappings())
+    // No `mappings(...)` line, deliberately. Minecraft has shipped unobfuscated since the
+    // 1.21.11 snapshots: there is no client_mappings download to fetch any more, and asking
+    // Loom for official Mojang mappings fails outright ("Failed to find official mojang
+    // mappings for 26.2"). The game already has real names, which is also why the shared
+    // sources compile unchanged against NeoForge's copy of it.
     modImplementation("net.fabricmc:fabric-loader:${property("fabricLoaderVersion")}")
     modImplementation("net.fabricmc.fabric-api:fabric-api:${property("fabricApiVersion")}")
 
