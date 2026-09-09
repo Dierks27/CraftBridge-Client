@@ -10,7 +10,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
-import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -61,7 +61,7 @@ public final class CraftBridgeClientNeoForge {
 
     private static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
         CraftBridgeClient.get().connected(
-                (channel, data) -> PacketDistributor.sendToServer(LinkPayload.of(channel, data)),
+                (channel, data) -> ClientPacketDistributor.sendToServer(LinkPayload.of(channel, data)),
                 modVersion());
     }
 
