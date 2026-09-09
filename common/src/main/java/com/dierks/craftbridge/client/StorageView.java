@@ -17,8 +17,12 @@ import java.util.Map;
  */
 public final class StorageView {
 
-    /** One item type and how many of it are in range. */
-    public record Held(ItemStack stack, int count) {
+    /**
+     * One item type and how many of it are in range. {@code key} is the item exactly as the
+     * server encoded it, kept so a click can name it back with the same bytes rather than a
+     * re-encoding that might not match.
+     */
+    public record Held(byte[] key, ItemStack stack, int count) {
     }
 
     private List<Held> held = List.of();
@@ -29,7 +33,7 @@ public final class StorageView {
         for (Map.Entry<SnapshotTracker.ItemKey, Integer> entry : counts.entrySet()) {
             ItemStack stack = ItemBlobs.decode(entry.getKey().bytes(), registries);
             if (!stack.isEmpty() && entry.getValue() > 0) {
-                rebuilt.add(new Held(stack, entry.getValue()));
+                rebuilt.add(new Held(entry.getKey().bytes(), stack, entry.getValue()));
             }
         }
         held = List.copyOf(rebuilt);

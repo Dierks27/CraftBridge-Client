@@ -22,16 +22,27 @@ uninstalled. It has no items, no blocks, no GUI, no keybinds and no config.
 | Loader | Fabric (loader 0.19.5+, Fabric API) **or** NeoForge 26.2.0.82+ |
 | JEI | 30.32.0.209 |
 | Side | **Client only.** Do not put it on the server. |
-| Server | CraftBridge 0.8+ |
+| Server | CraftBridge 0.10+ |
 
 Both loaders are built from the same sources; download whichever jar matches your instance.
 
 ## What it does
 
-* **Sees your storage.** On opening a Linked Workbench the server sends a snapshot of every
+* **Shows you your storage.** A panel down the left of the crafting screen lists every item
+  type in range with its count, most numerous first. This is the surface the phantom slots
+  used to be, without their 36-type ceiling.
+* **Click to take.** Left-click takes a stack to the cursor, right-click takes half a stack,
+  shift-click takes as many as fit into your inventory — the same rules as a phantom slot,
+  because the server runs both through the same code. The mod moves no items itself: it names
+  the item and the click, and the server decides the amount from what is really in range.
+* **Keeps it current.** On opening a Linked Workbench the server sends a snapshot of every
   item type in range, then small deltas as things change. Each message carries a sequence
   number, so a dropped or reordered one is noticed rather than quietly leaving the view lying
   about counts; the mod asks for a fresh snapshot instead.
+* **Never leaves you with less.** The server keeps your phantom slots until the panel has
+  actually drawn a frame — not when the snapshot arrives, but when it is on the screen. A mod
+  that cannot show you anything therefore falls back to the server's own view rather than to
+  nothing at all.
 * **Fills the grid through the server.** JEI's [+] sends the plugin the *name of the recipe*
   and nothing else. The mod never moves an item itself and never tells the server what it has:
   the server holds the inventory, does its own permission and reach checks, and decides what
@@ -93,3 +104,5 @@ is in `common/`.
   announcement can be dropped as unknown. It is retried twice and then dropped.
 * **On NeoForge the channels are registered as optional**, because the other end is a Paper
   server rather than a NeoForge one. A required payload would refuse the connection outright.
+* **The panel needs elbow room**: it is skipped on screens narrower than 420 scaled pixels
+  rather than drawn over the crafting GUI.
