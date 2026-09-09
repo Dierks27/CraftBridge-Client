@@ -22,14 +22,14 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
     public void onInitializeClient() {
         for (String channel : LinkPayload.TO_CLIENT) {
             CustomPacketPayload.Type<LinkPayload> type = LinkPayload.typeOf(channel);
-            PayloadTypeRegistry.playS2C().register(type, LinkPayload.codec(type));
+            PayloadTypeRegistry.clientboundPlay().register(type, LinkPayload.codec(type));
             ClientPlayNetworking.registerGlobalReceiver(type, (payload, context) ->
                     context.client().execute(() ->
                             CraftBridgeClient.get().receive(payload.channel(), payload.data())));
         }
         for (String channel : LinkPayload.TO_SERVER) {
             CustomPacketPayload.Type<LinkPayload> type = LinkPayload.typeOf(channel);
-            PayloadTypeRegistry.playC2S().register(type, LinkPayload.codec(type));
+            PayloadTypeRegistry.serverboundPlay().register(type, LinkPayload.codec(type));
         }
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) ->

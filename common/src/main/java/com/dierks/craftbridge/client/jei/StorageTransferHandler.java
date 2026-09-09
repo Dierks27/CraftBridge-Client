@@ -69,6 +69,7 @@ public final class StorageTransferHandler implements IRecipeTransferHandler<Craf
     }
 
     @Deprecated
+    @SuppressWarnings("removal") // JEI still declares this overload abstract, so it must be here
     @Override
     public IRecipeTransferError transferRecipe(CraftingMenu container, RecipeHolder<CraftingRecipe> recipe,
                                                IRecipeSlotsView recipeSlots, Player player,
@@ -173,7 +174,7 @@ public final class StorageTransferHandler implements IRecipeTransferHandler<Craf
         }
         Player player = Minecraft.getInstance().player;
         if (player != null) {
-            player.displayClientMessage(Component.literal(message), false);
+            player.sendSystemMessage(Component.literal(message));
         }
     }
 }
