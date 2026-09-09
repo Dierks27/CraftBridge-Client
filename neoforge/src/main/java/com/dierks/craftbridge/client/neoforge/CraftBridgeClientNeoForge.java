@@ -13,6 +13,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
+import net.neoforged.neoforge.network.handling.IPayloadHandler;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -43,9 +44,15 @@ public final class CraftBridgeClientNeoForge {
         for (String channel : LinkPayload.TO_CLIENT) {
             CustomPacketPayload.Type<LinkPayload> type = LinkPayload.typeOf(channel);
             if (LinkPayload.TO_SERVER.contains(channel)) {
-                registrar.playBidirectional(type, LinkPayload.codec(type), (payload, context) ->
+                // Both handlers, not one: the three-argument playBidirectional registers the
+                // handler for the SERVERBOUND direction only and leaves the clientbound side
+                // to RegisterClientPayloadHandlersEvent, which fails startup validation with
+                // "clientbound payloads are missing client-side handlers". The serverbound one
+                // can never fire in a client-only mod; it is there to satisfy the signature.
+                IPayloadHandler<LinkPayload> handler = (payload, context) ->
                         context.enqueueWork(() ->
-                                CraftBridgeClient.get().receive(payload.channel(), payload.data())));
+                                CraftBridgeClient.get().receive(payload.channel(), payload.data()));
+                registrar.playBidirectional(type, LinkPayload.codec(type), handler, handler);
             } else {
                 registrar.playToClient(type, LinkPayload.codec(type), (payload, context) ->
                         context.enqueueWork(() ->
