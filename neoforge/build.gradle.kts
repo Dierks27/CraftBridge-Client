@@ -2,8 +2,8 @@ plugins {
     id("net.neoforged.moddev") version "2.0.146"
 }
 
-val mc = property("minecraftVersion") as String
-val jei = property("jeiVersion") as String
+val mc = providers.gradleProperty("minecraftVersion").get()
+val jei = providers.gradleProperty("jeiVersion").get()
 
 base { archivesName.set("craftbridge-client-$mc-neoforge") }
 
@@ -16,14 +16,14 @@ sourceSets {
 }
 
 neoForge {
-    version = property("neoforgeVersion") as String
+    version = providers.gradleProperty("neoforgeVersion").get()
     runs {
         create("client") {
             client()
         }
     }
     mods {
-        create(property("modId") as String) {
+        create(providers.gradleProperty("modId").get()) {
             sourceSet(sourceSets.main.get())
         }
     }
