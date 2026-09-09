@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "${modId}",
+  "version": "${modVersion}",
+  "name": "CraftBridge Client",
+  "description": "Optional companion to the CraftBridge Paper plugin: lets JEI's [+] see every item in nearby storage at a Linked Workbench, not just the 36 a server can fake. Does nothing on a server without CraftBridge.",
+  "authors": ["Dierks"],
+  "contact": { "sources": "https://github.com/Dierks27/CraftBridge-Client" },
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.dierks.craftbridge.client.fabric.CraftBridgeClientFabric"]
+  },
+  "depends": {
+    "fabricloader": ">=${fabricLoaderVersion}",
+    "minecraft": "~${minecraftVersion}",
+    "fabric-api": "*",
+    "jei": "*"
+  }
+}
