@@ -2,8 +2,10 @@ package com.dierks.craftbridge.client.jei;
 
 import com.dierks.craftbridge.client.StorageView;
 import mezz.jei.api.gui.ingredient.IRecipeSlotView;
+import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.Container;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
@@ -49,8 +51,11 @@ final class Craftability {
 
     static Report check(List<IRecipeSlotView> inputs, Player player, StorageView storage) {
         List<Available> pool = new ArrayList<>();
+        // The 36 main slots only, hotbar included: what the server fills from. Worn armour and
+        // the offhand are part of the same container but are not the player's to spend.
         Container inventory = player.getInventory();
-        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+        int mainSlots = Math.min(Inventory.INVENTORY_SIZE, inventory.getContainerSize());
+        for (int slot = 0; slot < mainSlots; slot++) {
             ItemStack stack = inventory.getItem(slot);
             if (!stack.isEmpty()) {
                 pool.add(new Available(stack, stack.getCount()));
@@ -94,13 +99,40 @@ final class Craftability {
     private static boolean take(List<Available> pool, List<ItemStack> choices) {
         for (ItemStack choice : choices) {
             for (Available available : pool) {
-                if (available.amount > 0 && ItemStack.isSameItemSameComponents(available.stack, choice)) {
+                if (available.amount > 0 && accepts(choice, available.stack)) {
                     available.amount--;
                     return true;
                 }
             }
         }
         return false;
+    }
+
+    /**
+     * Whether a slot that lists {@code choice} takes {@code have}, judged the way the server
+     * judges it rather than by exact components.
+     *
+     * <p>A plain choice — a vanilla or tag ingredient, which JEI lists as bare stacks with no
+     * components — takes any copy of the item: damaged, enchanted or renamed, the recipe only
+     * cares what it is. Except one of the server's own custom items, which the server will not
+     * spend on an ingredient that does not ask for it (a "Sweet Berry Soup" is not a beetroot
+     * soup to a vanilla recipe). A choice that is itself dressed up, a custom item ingredient,
+     * takes only that custom item.
+     */
+    static boolean accepts(ItemStack choice, ItemStack have) {
+        if (ItemStack.isSameItemSameComponents(have, choice)) {
+            return true;
+        }
+        if (!ItemStack.isSameItem(have, choice)) {
+            return false;
+        }
+        if (DataComponentPatch.EMPTY.equals(choice.getComponentsPatch())) {
+            return !CustomItems.isCustom(have);
+        }
+        // The same custom item, told apart the way JEI tells it apart: by name, not by every
+        // component (a head's profile, for one, need not match between two copies).
+        return CustomItems.isCustom(choice)
+                && CustomItems.keyOf(choice).equals(CustomItems.keyOf(have));
     }
 
     /** The first few accepted items by registry name, so a red button can be read in the log. */

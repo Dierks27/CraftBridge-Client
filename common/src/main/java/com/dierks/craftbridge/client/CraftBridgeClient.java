@@ -1,7 +1,9 @@
 package com.dierks.craftbridge.client;
 
+import com.dierks.craftbridge.client.jei.JeiRestart;
 import com.dierks.craftbridge.link.LinkProtocol;
 import com.dierks.craftbridge.link.SnapshotTracker;
+import com.dierks.craftbridge.link.VarInts;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.RegistryAccess;
 import org.slf4j.Logger;
@@ -25,10 +27,21 @@ public final class CraftBridgeClient {
     private static final Logger LOGGER = LogUtils.getLogger();
     /** How long to wait for the server's verdict on a transfer before telling JEI it failed. */
     private static final int RESULT_TIMEOUT_TICKS = 200;
+    /**
+     * How long a middle-click sort waits for its answer. Short: the server drops requests over
+     * its rate limit without answering, and only one sort is in flight at a time.
+     */
+    private static final int SORT_TIMEOUT_TICKS = 40;
     /** The hello waits a moment: a Paper server declares its channels shortly after we join. */
     private static final int FIRST_HELLO_TICKS = 20;
     private static final int HELLO_RETRY_TICKS = 60;
     private static final int HELLO_ATTEMPTS = 3;
+    /**
+     * Storage messages in a row this client may fail to read, each answered with a request for
+     * a fresh snapshot, before it stops asking for this session rather than loop on a message
+     * it will never be able to read.
+     */
+    private static final int STORAGE_FAILURES_BEFORE_GIVING_UP = 3;
 
     private static final CraftBridgeClient INSTANCE = new CraftBridgeClient();
 
@@ -42,7 +55,14 @@ public final class CraftBridgeClient {
         void completed(boolean ok, String message);
     }
 
-    private record Pending(TransferOutcome outcome, int deadline) {
+    /**
+     * @param quiet a request whose failure only the server's own words should explain: a
+     *              timeout, a disconnect or a session end completes it with an empty message
+     */
+    private record Pending(TransferOutcome outcome, int deadline, boolean quiet) {
+        Pending(TransferOutcome outcome, int deadline) {
+            this(outcome, deadline, false);
+        }
     }
 
     private final SnapshotTracker tracker = new SnapshotTracker();
@@ -53,13 +73,25 @@ public final class CraftBridgeClient {
     private String modVersion = "dev";
     private String pluginVersion;
     private boolean phantomSlotsOff;
+    /** The server's hello said a middle-click will sort for us ({@link LinkProtocol#FLAG_SORT}). */
+    private boolean sortAllowed;
+    /** The id of the sort request still waiting for its answer, or 0: one at a time. */
+    private int sortPending;
     private boolean sessionLive;
     private int nextRequestId = 1;
     private int tick;
     private int helloAttemptsLeft;
     private int nextHelloTick;
-    /** Set once the panel has drawn and the server has been told; reset when the view goes away. */
+    /** Set once the panel has drawn this session and the server has been told; reset per session. */
     private boolean drawnAcked;
+    /**
+     * What the server last heard: that the panel is drawing. Unlike {@link #drawnAcked} this
+     * outlives a session, because so does the server's belief: it opens the next Linked
+     * Workbench without phantom slots. If the panel then has no room (a recipe book open, a
+     * narrower window) the server must hear so, or the player is left with neither.
+     */
+    private boolean serverThinksDrawing;
+    private int storageFailures;
     private List<LinkProtocol.CatalogEntry> catalog = List.of();
 
     private CraftBridgeClient() {
@@ -88,14 +120,31 @@ public final class CraftBridgeClient {
         forget();
     }
 
+    /**
+     * Stop talking to this server for the rest of the connection: it speaks a protocol version
+     * this client does not. If the server had been told the panel is showing, it is told first
+     * that it is not, so it gives the player back the phantom slots instead of leaving them with
+     * neither.
+     */
+    private void goDormant() {
+        panelHidden();
+        forget();
+    }
+
     private void forget() {
         sender = null;
         pluginVersion = null;
         phantomSlotsOff = false;
+        sortAllowed = false;
+        sortPending = 0;
         sessionLive = false;
         drawnAcked = false;
+        serverThinksDrawing = false;
+        storageFailures = 0;
         storage.clear();
         catalog = List.of();
+        JeiRestart.forget();
+        com.dierks.craftbridge.client.jei.CraftCount.forget();
         helloAttemptsLeft = 0;
         failAllPending("disconnected");
     }
@@ -113,6 +162,16 @@ public final class CraftBridgeClient {
         return phantomSlotsOff;
     }
 
+    /** True when the server said a middle-click in a container screen should sort. */
+    public boolean sortAllowed() {
+        return sortAllowed && sender != null;
+    }
+
+    /** True while a sort request is waiting for the server's answer. */
+    public boolean sortInFlight() {
+        return sortPending != 0 && pending.containsKey(sortPending);
+    }
+
     public StorageView storage() {
         return storage;
     }
@@ -124,11 +183,29 @@ public final class CraftBridgeClient {
     // ---- incoming --------------------------------------------------------------------
 
     /**
-     * One entry point for every channel, so a payload this version cannot read — an older or
-     * newer plugin, a truncated message — puts the mod back to sleep instead of throwing into
-     * the client's packet handling.
+     * One entry point for every channel, so a payload this version cannot read never throws
+     * into the client's packet handling.
+     *
+     * <p>Only a plugin that speaks another protocol version puts the mod to sleep: nothing it
+     * sends can be trusted to mean what this side thinks. Any other message that fails to read
+     * — one odd item, a truncated payload — costs that message and nothing more. A storage
+     * message is then asked for again as a fresh snapshot, because the view has missed an
+     * update, and the link stays up.
      */
     public void receive(String channel, byte[] payload) {
+        int version = versionOf(payload);
+        if (version >= 0 && version != LinkProtocol.VERSION) {
+            LOGGER.warn("CraftBridge: the server speaks link protocol version {} on {}, this client {};"
+                    + " going dormant. Update whichever is older.", version, channel, LinkProtocol.VERSION);
+            boolean wasLinked = sender != null;
+            goDormant();
+            if (wasLinked) {
+                tellPlayer("CraftBridge: the server speaks link protocol version " + version
+                        + ", this client version " + LinkProtocol.VERSION + "; the mod is off for this server."
+                        + " Update whichever is older.");
+            }
+            return;
+        }
         try {
             switch (channel) {
                 case LinkProtocol.CHANNEL_HELLO -> onServerHello(LinkProtocol.decodeServerHello(payload));
@@ -140,16 +217,63 @@ public final class CraftBridgeClient {
                 default -> LOGGER.debug("CraftBridge: ignoring unknown channel {}", channel);
             }
         } catch (RuntimeException e) {
-            LOGGER.warn("CraftBridge: could not read a {} payload, going dormant: {}", channel, e.toString());
-            forget();
+            LOGGER.warn("CraftBridge: could not read a {} payload, dropping it: {}", channel, e.toString());
+            if (LinkProtocol.CHANNEL_STORAGE.equals(channel)) {
+                storageUnreadable();
+            }
         }
     }
 
+    /** A line in the player's chat, when there is a player to show it to. */
+    private static void tellPlayer(String message) {
+        net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+        if (player != null) {
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal(message));
+        }
+    }
+
+    /** The protocol version a payload starts with, or -1 when there is not even that. */
+    private static int versionOf(byte[] payload) {
+        try {
+            return new VarInts.Reader(payload).readVarInt();
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * A storage message could not be read, so the view has missed an update. Ask for the whole
+     * thing again — a few times. A server that keeps sending something this client cannot read
+     * would otherwise be asked forever; after that the panel is put away for this session and
+     * the server is told, so the player falls back to the phantom slots.
+     */
+    private void storageUnreadable() {
+        storageFailures++;
+        if (storageFailures <= STORAGE_FAILURES_BEFORE_GIVING_UP) {
+            requestResync();
+            return;
+        }
+        LOGGER.warn("CraftBridge: {} storage messages in a row could not be read; not showing storage"
+                + " for this session", storageFailures);
+        panelHidden();
+        sessionLive = false;
+        storage.clear();
+    }
+
+    /**
+     * The server's hello, on join and again whenever one of its flags changes (the player's sort
+     * settings, a plugin reload). Only the version and the flags are taken from it; a repeated
+     * hello resets nothing else.
+     */
     private void onServerHello(LinkProtocol.ServerHello hello) {
         pluginVersion = hello.pluginVersion();
         phantomSlotsOff = hello.phantomSlotsOff();
-        LOGGER.info("CraftBridge: server plugin {} (mod {}); phantom slots {}",
-                pluginVersion, modVersion, phantomSlotsOff ? "off for us" : "on");
+        sortAllowed = hello.sortAllowed();
+        // A hello may be the server starting over (a plugin reload) with no idea the panel is
+        // up: say it again on the next frame drawn. A repeat the server did not need is ignored.
+        drawnAcked = false;
+        LOGGER.info("CraftBridge: server plugin {} (mod {}); phantom slots {}; middle-click sort {}",
+                pluginVersion, modVersion, phantomSlotsOff ? "off for us" : "on", sortAllowed ? "on" : "off");
     }
 
     private void onStorage(LinkProtocol.Storage message) {
@@ -170,6 +294,7 @@ public final class CraftBridgeClient {
         }
         storage.rebuild(tracker.counts(), registries);
         sessionLive = true;
+        storageFailures = 0;
         LOGGER.info("CraftBridge: {} item type(s) in range", storage.all().size());
     }
 
@@ -186,15 +311,36 @@ public final class CraftBridgeClient {
             return;
         }
         drawnAcked = true;
+        serverThinksDrawing = true;
         send(LinkProtocol.CHANNEL_STORAGE_ACK,
                 LinkProtocol.encode(new LinkProtocol.StorageAck(tracker.sequence(), true)));
         LOGGER.info("CraftBridge: storage panel is drawing; told the server it can drop the phantom slots");
+    }
+
+    /**
+     * Called by the storage panel when it has been drawing and now cannot: the screen became
+     * too narrow, or something else took the room it needs.
+     *
+     * <p>The server took the phantom slots away because the panel was showing. If it is not
+     * showing any more, the server hears that too and gives them back, so the player is never
+     * left seeing neither. The panel says it is drawing again whenever it next draws a frame.
+     */
+    public void panelHidden() {
+        if (!serverThinksDrawing) {
+            return;
+        }
+        serverThinksDrawing = false;
+        drawnAcked = false;
+        send(LinkProtocol.CHANNEL_STORAGE_ACK,
+                LinkProtocol.encode(new LinkProtocol.StorageAck(tracker.sequence(), false)));
+        LOGGER.info("CraftBridge: storage panel can no longer be shown; told the server to keep the phantom slots");
     }
 
     private void onSessionEnd(LinkProtocol.SessionEnd end) {
         LOGGER.info("CraftBridge: storage view closed ({})", end.reason());
         sessionLive = false;
         drawnAcked = false;
+        storageFailures = 0;
         storage.clear();
         failAllPending(end.reason());
     }
@@ -207,9 +353,23 @@ public final class CraftBridgeClient {
     }
 
     private void onItemCatalog(byte[] payload) {
-        LOGGER.info("CraftBridge: item catalog, {} bytes", payload.length);
         catalog = LinkProtocol.decodeItemCatalog(payload).entries();
+        LOGGER.info("CraftBridge: item catalog, {} bytes, {} custom item(s): {}",
+                payload.length, catalog.size(), describe(catalog));
         CatalogCache.store(payload, catalog.size());
+        RegistryAccess registries = ClientRegistries.current();
+        if (registries != null) {
+            JeiRestart.catalogArrived(CatalogCache.decode(catalog, registries));
+        }
+    }
+
+    /** The first few names in a catalog, so the log says what arrived and not only how much. */
+    private static String describe(List<LinkProtocol.CatalogEntry> entries) {
+        StringBuilder names = new StringBuilder("[");
+        for (int i = 0; i < entries.size() && i < 20; i++) {
+            names.append(i == 0 ? "" : ", ").append(entries.get(i).displayName());
+        }
+        return names.append(entries.size() > 20 ? ", ...]" : "]").toString();
     }
 
     // ---- outgoing --------------------------------------------------------------------
@@ -227,13 +387,25 @@ public final class CraftBridgeClient {
      */
     public boolean requestTransfer(String recipeId, List<LinkProtocol.SlotChoices> slots,
                                    boolean maxTransfer, TransferOutcome outcome) {
+        return requestTransfer(recipeId, slots, maxTransfer, 0, false, outcome);
+    }
+
+    /**
+     * @param craftCount how many crafts to fill the grid for; 0 for JEI's usual one, or as many
+     *                   as possible with {@code maxTransfer}. The server bounds it by what is to
+     *                   hand and by stack sizes
+     * @param leaveOne   "All but one": leave one of each ingredient in every container slot
+     */
+    public boolean requestTransfer(String recipeId, List<LinkProtocol.SlotChoices> slots, boolean maxTransfer,
+                                   int craftCount, boolean leaveOne, TransferOutcome outcome) {
         if (sender == null) {
             return false;
         }
         int requestId = nextRequestId++;
         pending.put(requestId, new Pending(outcome, tick + RESULT_TIMEOUT_TICKS));
         send(LinkProtocol.CHANNEL_TRANSFER_REQUEST, LinkProtocol.encode(new LinkProtocol.TransferRequest(
-                requestId, tracker.sequence(), maxTransfer, true, recipeId == null ? "" : recipeId, slots)));
+                requestId, tracker.sequence(), maxTransfer, true, Math.max(0, craftCount), leaveOne,
+                recipeId == null ? "" : recipeId, slots)));
         return true;
     }
 
@@ -255,6 +427,26 @@ public final class CraftBridgeClient {
         return true;
     }
 
+    /**
+     * The player middle-clicked a slot in a container screen. Names the screen (its menu id,
+     * so the server never sorts a screen that has since been replaced) and which half, nothing
+     * more. One request at a time.
+     *
+     * @param target {@link LinkProtocol#SORT_TARGET_CONTAINER} or {@link LinkProtocol#SORT_TARGET_PLAYER}
+     * @return false when there is nothing to ask, or a sort is already waiting for its answer
+     */
+    public boolean requestSort(int containerId, String target, TransferOutcome outcome) {
+        if (sender == null || !sortAllowed || sortInFlight()) {
+            return false;
+        }
+        int requestId = nextRequestId++;
+        sortPending = requestId;
+        pending.put(requestId, new Pending(outcome, tick + SORT_TIMEOUT_TICKS, true));
+        send(LinkProtocol.CHANNEL_SORT_REQUEST,
+                LinkProtocol.encode(new LinkProtocol.SortRequest(requestId, containerId, target)));
+        return true;
+    }
+
     private void send(String channel, byte[] payload) {
         LinkSender to = sender;
         if (to == null) {
@@ -273,6 +465,7 @@ public final class CraftBridgeClient {
     /** Called every client tick, so a request the server never answers cannot hang JEI. */
     public void clientTick() {
         tick++;
+        JeiRestart.tick();
         if (sender != null && pluginVersion == null && helloAttemptsLeft > 0 && tick - nextHelloTick >= 0) {
             helloAttemptsLeft--;
             nextHelloTick = tick + HELLO_RETRY_TICKS;
@@ -291,7 +484,7 @@ public final class CraftBridgeClient {
             }
         }
         for (Pending waiting : expired) {
-            waiting.outcome().completed(false, "The server did not answer.");
+            waiting.outcome().completed(false, waiting.quiet() ? "" : "The server did not answer.");
         }
     }
 
@@ -299,7 +492,7 @@ public final class CraftBridgeClient {
         List<Pending> waiting = List.copyOf(pending.values());
         pending.clear();
         for (Pending one : waiting) {
-            one.outcome().completed(false, reason);
+            one.outcome().completed(false, one.quiet() ? "" : reason);
         }
     }
 }

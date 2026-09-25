@@ -10,8 +10,9 @@ import java.util.List;
  * <p>A vanilla crafting menu has 36 inventory slots and JEI decides craftability by scanning
  * them, so a server on its own can never show more than 36 item types. The mod removes that
  * ceiling by being told what is in storage directly. This class is the contract: <b>the two
- * codebases keep byte-identical copies of it</b>, and every payload starts with
- * {@link #VERSION} so a mismatched pair refuses to talk rather than misreading each other.
+ * codebases keep identical copies of it</b> (but for the plugin's one import of its
+ * {@code VarInts}), and every payload starts with {@link #VERSION} so a mismatched pair
+ * refuses to talk rather than misreading each other.
  *
  * <p>Item stacks are carried as opaque length-prefixed blobs, encoded by the game's own item
  * codec on whichever side is writing. That keeps this class free of both Bukkit and Minecraft
@@ -29,7 +30,7 @@ import java.util.List;
 public final class LinkProtocol {
 
     /** Bumped whenever any payload's layout changes. Both sides must agree exactly. */
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
 
     public static final String CHANNEL_HELLO = "craftbridge:hello";
     public static final String CHANNEL_STORAGE = "craftbridge:storage";
@@ -40,9 +41,21 @@ public final class LinkProtocol {
     public static final String CHANNEL_TRANSFER_RESULT = "craftbridge:transfer_result";
     public static final String CHANNEL_SESSION_END = "craftbridge:session_end";
     public static final String CHANNEL_ITEM_CATALOG = "craftbridge:item_catalog";
+    public static final String CHANNEL_SORT_REQUEST = "craftbridge:sort_request";
 
     /** Set in {@link ServerHello#flags} when the server has turned phantom slots off for this player. */
     public static final int FLAG_PHANTOM_SLOTS_OFF = 1;
+    /**
+     * Set in {@link ServerHello#flags} when the server will sort for this player on a middle-click.
+     * A client that does not see it leaves middle-click alone, so a server that cannot sort (an
+     * older one, sorting switched off, no permission, the player's toggle off) is never sent a
+     * request. The server sends a fresh ServerHello whenever this changes.
+     */
+    public static final int FLAG_SORT = 2;
+    /** {@link SortRequest#target}: the open container's own slots. */
+    public static final String SORT_TARGET_CONTAINER = "CONTAINER";
+    /** {@link SortRequest#target}: the player's own inventory rows. */
+    public static final String SORT_TARGET_PLAYER = "PLAYER";
 
     private LinkProtocol() {
     }
@@ -57,6 +70,10 @@ public final class LinkProtocol {
     public record ServerHello(String pluginVersion, int flags) {
         public boolean phantomSlotsOff() {
             return (flags & FLAG_PHANTOM_SLOTS_OFF) != 0;
+        }
+
+        public boolean sortAllowed() {
+            return (flags & FLAG_SORT) != 0;
         }
     }
 
@@ -91,13 +108,19 @@ public final class LinkProtocol {
 
     /**
      * What the player asked for. The client says which recipe it wants and nothing more: it
-     * never says what it has or how much, because the server does not trust it.
+     * never says what it has, because the server does not trust it.
      *
      * @param basedOnSequence the storage sequence the client's craftability check used, so the
      *                        server can tell it to resync instead of acting on a stale view
+     * @param craftCount      how many crafts the grid should hold; 0 for JEI's own behaviour
+     *                        (one, or as many as possible with {@code maxTransfer}). The server
+     *                        fills at most this many, bounded by what is to hand and stack sizes
+     * @param leaveOne        "All but one": every container slot an ingredient is taken from
+     *                        keeps at least one of it, as a golem chest always does
      */
     public record TransferRequest(int requestId, int basedOnSequence, boolean maxTransfer,
-                                  boolean requireCompleteSets, String recipeId, List<SlotChoices> slots) {
+                                  boolean requireCompleteSets, int craftCount, boolean leaveOne,
+                                  String recipeId, List<SlotChoices> slots) {
     }
 
     /**
@@ -111,7 +134,19 @@ public final class LinkProtocol {
     public record PullRequest(int requestId, byte[] item, String mode) {
     }
 
-    /** Success, or why not — for a transfer or a pull; shown to the player rather than silence. */
+    /**
+     * The player middle-clicked in a container screen: which screen, and which half of it.
+     * Nothing else — the server applies {@code /sort}'s own rules to what it knows is open.
+     * Answered with a {@link TransferResult} carrying the same id.
+     *
+     * @param containerId the open menu's id as the client knows it; a request for a screen the
+     *                    server has since closed or replaced is refused, never applied elsewhere
+     * @param target      {@link #SORT_TARGET_CONTAINER} or {@link #SORT_TARGET_PLAYER}
+     */
+    public record SortRequest(int requestId, int containerId, String target) {
+    }
+
+    /** Success, or why not — for a transfer, a pull or a sort; shown to the player rather than silence. */
     public record TransferResult(int requestId, boolean ok, String message) {
     }
 
@@ -162,7 +197,9 @@ public final class LinkProtocol {
                 .writeVarInt(request.requestId())
                 .writeVarInt(request.basedOnSequence())
                 .writeBoolean(request.maxTransfer())
-                .writeBoolean(request.requireCompleteSets());
+                .writeBoolean(request.requireCompleteSets())
+                .writeVarInt(Math.max(0, request.craftCount()))
+                .writeBoolean(request.leaveOne());
         boolean hasId = request.recipeId() != null && !request.recipeId().isEmpty();
         w.writeBoolean(hasId);
         if (hasId) {
@@ -183,6 +220,11 @@ public final class LinkProtocol {
     public static byte[] encode(PullRequest request) {
         return header().writeVarInt(request.requestId()).writeBytes(request.item())
                 .writeString(request.mode()).toByteArray();
+    }
+
+    public static byte[] encode(SortRequest request) {
+        return header().writeVarInt(request.requestId()).writeVarInt(request.containerId())
+                .writeString(request.target()).toByteArray();
     }
 
     public static byte[] encode(TransferResult result) {
@@ -245,8 +287,11 @@ public final class LinkProtocol {
         int basedOn = r.readVarInt();
         boolean maxTransfer = r.readBoolean();
         boolean completeSets = r.readBoolean();
+        int craftCount = r.readVarInt();
+        boolean leaveOne = r.readBoolean();
         if (r.readBoolean()) {
-            return new TransferRequest(requestId, basedOn, maxTransfer, completeSets, r.readString(), List.of());
+            return new TransferRequest(requestId, basedOn, maxTransfer, completeSets, craftCount, leaveOne,
+                    r.readString(), List.of());
         }
         int slotCount = r.readVarInt();
         List<SlotChoices> slots = new ArrayList<>(Math.min(slotCount, 9));
@@ -259,12 +304,17 @@ public final class LinkProtocol {
             }
             slots.add(new SlotChoices(gridIndex, choices));
         }
-        return new TransferRequest(requestId, basedOn, maxTransfer, completeSets, "", slots);
+        return new TransferRequest(requestId, basedOn, maxTransfer, completeSets, craftCount, leaveOne, "", slots);
     }
 
     public static PullRequest decodePullRequest(byte[] payload) {
         VarInts.Reader r = open(payload);
         return new PullRequest(r.readVarInt(), r.readBytes(), r.readString());
+    }
+
+    public static SortRequest decodeSortRequest(byte[] payload) {
+        VarInts.Reader r = open(payload);
+        return new SortRequest(r.readVarInt(), r.readVarInt(), r.readString());
     }
 
     public static TransferResult decodeTransferResult(byte[] payload) {

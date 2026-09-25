@@ -1,6 +1,7 @@
 package com.dierks.craftbridge.client.jei;
 
 import com.dierks.craftbridge.client.CatalogCache;
+import com.dierks.craftbridge.client.RecipeResults;
 import com.mojang.logging.LogUtils;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
@@ -10,6 +11,8 @@ import mezz.jei.api.recipe.transfer.IRecipeTransferInfo;
 import mezz.jei.api.registration.IExtraIngredientRegistration;
 import mezz.jei.api.registration.IRecipeTransferRegistration;
 import mezz.jei.api.registration.ISubtypeRegistration;
+import mezz.jei.api.runtime.IJeiRuntime;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.MenuType;
@@ -20,8 +23,11 @@ import net.minecraft.world.item.crafting.RecipeHolder;
 import org.slf4j.Logger;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 
 /** Where the mod meets JEI. Everything else it does is networking. */
 @JeiPlugin
@@ -61,21 +67,56 @@ public class CraftBridgeJeiPlugin implements IModPlugin {
      */
     @Override
     public void registerItemSubtypes(ISubtypeRegistration registration) {
+        List<ItemStack> custom = customItems();
         Set<Item> seen = new HashSet<>();
-        for (ItemStack stack : CatalogCache.stacks()) {
+        for (ItemStack stack : custom) {
             if (seen.add(stack.getItem())) {
                 registration.registerSubtypeInterpreter(stack.getItem(), CatalogSubtypes.INSTANCE);
             }
         }
-        LOGGER.info("CraftBridge: registered subtypes for {} custom item base(s)", seen.size());
+        CustomItems.registered(custom);
+        StringJoiner bases = new StringJoiner(", ");
+        seen.forEach(item -> bases.add(String.valueOf(BuiltInRegistries.ITEM.getKey(item))));
+        LOGGER.info("CraftBridge: registered subtypes for {} custom item base(s) [{}]", seen.size(), bases);
     }
 
     @Override
     public void registerExtraIngredients(IExtraIngredientRegistration registration) {
-        List<ItemStack> custom = CatalogCache.stacks();
+        List<ItemStack> custom = customItems();
         if (!custom.isEmpty()) {
             registration.addExtraItemStacks(custom);
         }
+    }
+
+    /**
+     * The server's custom items, one of each: the stored catalog, plus the results of the
+     * CraftBridge recipes the server has synced (Fabric only, and only on a CraftBridge server),
+     * which are current even when the stored catalog is a session behind.
+     */
+    private static List<ItemStack> customItems() {
+        Map<CustomItems.Key, ItemStack> unique = new LinkedHashMap<>();
+        for (ItemStack stack : CatalogCache.stacks()) {
+            unique.putIfAbsent(CustomItems.keyOf(stack), stack);
+        }
+        int fromCatalog = unique.size();
+        for (ItemStack stack : RecipeResults.dressedUp()) {
+            unique.putIfAbsent(CustomItems.keyOf(stack), stack);
+        }
+        if (unique.size() > fromCatalog) {
+            LOGGER.info("CraftBridge: {} custom item(s) from the server's synced recipes that the stored"
+                    + " catalog does not list yet", unique.size() - fromCatalog);
+        }
+        return List.copyOf(unique.values());
+    }
+
+    @Override
+    public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
+        JeiScreens.runtimeAvailable(jeiRuntime);
+    }
+
+    @Override
+    public void onRuntimeUnavailable() {
+        JeiScreens.runtimeUnavailable();
     }
 
     @Override
