@@ -24,7 +24,7 @@ side = "CLIENT"
 [[dependencies.${modId}]]
 modId = "minecraft"
 type = "required"
-versionRange = "[${minecraftVersion},)"
+versionRange = "${minecraftVersionRange}"
 ordering = "NONE"
 side = "CLIENT"
 

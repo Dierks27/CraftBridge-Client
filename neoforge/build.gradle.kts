@@ -2,8 +2,10 @@ plugins {
     id("net.neoforged.moddev") version "2.0.146"
 }
 
-val mc = providers.gradleProperty("minecraftVersion").get()
-val jei = providers.gradleProperty("jeiVersion").get()
+// Per-target versions, set by the root build from versions/<mcTarget>.properties.
+val mc = extra["minecraftVersion"] as String
+val jei = extra["jeiVersion"] as String
+val neoforgeBuild = extra["neoforgeVersion"] as String
 
 base { archivesName.set("craftbridge-client-$mc-neoforge") }
 
@@ -16,7 +18,7 @@ sourceSets {
 }
 
 neoForge {
-    version = providers.gradleProperty("neoforgeVersion").get()
+    version = neoforgeBuild
     runs {
         create("client") {
             client()

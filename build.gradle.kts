@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     java
 }
@@ -8,8 +10,23 @@ plugins {
 // and -P only, so what a build file asks for is what gradle.properties says.
 fun Project.setting(name: String): String = providers.gradleProperty(name).get()
 
+// The Minecraft-specific versions live in versions/<mcTarget>.properties, one file per target,
+// so 26.2 and 26.3 build from the same sources with nothing but -PmcTarget to tell them apart.
+// Each subproject gets them as extra properties: `extra["minecraftVersion"]` and so on.
+val mcTarget = setting("mcTarget")
+val targetFile = file("versions/$mcTarget.properties")
+require(targetFile.isFile) {
+    "mcTarget=$mcTarget has no versions/$mcTarget.properties; known targets: " +
+        file("versions").list()!!.sorted().joinToString { it.removeSuffix(".properties") }
+}
+val target: Map<String, String> = Properties()
+    .apply { targetFile.reader().use { load(it) } }
+    .entries.associate { (k, v) -> k.toString() to v.toString() }
+
 subprojects {
     apply(plugin = "java")
+
+    target.forEach { (name, value) -> extra[name] = value }
 
     group = setting("modGroup")
     version = setting("modVersion")
@@ -36,9 +53,10 @@ subprojects {
         val props = mapOf(
             "modId" to setting("modId"),
             "modVersion" to setting("modVersion"),
-            "minecraftVersion" to setting("minecraftVersion"),
-            "fabricLoaderVersion" to setting("fabricLoaderVersion"),
-            "neoforgeVersion" to setting("neoforgeVersion"),
+            "minecraftVersion" to target.getValue("minecraftVersion"),
+            "minecraftVersionRange" to target.getValue("minecraftVersionRange"),
+            "fabricLoaderVersion" to target.getValue("fabricLoaderVersion"),
+            "neoforgeVersion" to target.getValue("neoforgeVersion"),
         )
         inputs.properties(props)
         filesMatching(listOf("fabric.mod.json", "META-INF/neoforge.mods.toml")) {
