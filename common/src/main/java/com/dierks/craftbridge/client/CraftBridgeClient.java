@@ -82,8 +82,15 @@ public final class CraftBridgeClient {
     private int tick;
     private int helloAttemptsLeft;
     private int nextHelloTick;
-    /** Set once the panel has drawn and the server has been told; reset when the view goes away. */
+    /** Set once the panel has drawn this session and the server has been told; reset per session. */
     private boolean drawnAcked;
+    /**
+     * What the server last heard: that the panel is drawing. Unlike {@link #drawnAcked} this
+     * outlives a session, because so does the server's belief: it opens the next Linked
+     * Workbench without phantom slots. If the panel then has no room (a recipe book open, a
+     * narrower window) the server must hear so, or the player is left with neither.
+     */
+    private boolean serverThinksDrawing;
     private int storageFailures;
     private List<LinkProtocol.CatalogEntry> catalog = List.of();
 
@@ -132,6 +139,7 @@ public final class CraftBridgeClient {
         sortPending = 0;
         sessionLive = false;
         drawnAcked = false;
+        serverThinksDrawing = false;
         storageFailures = 0;
         storage.clear();
         catalog = List.of();
@@ -261,6 +269,9 @@ public final class CraftBridgeClient {
         pluginVersion = hello.pluginVersion();
         phantomSlotsOff = hello.phantomSlotsOff();
         sortAllowed = hello.sortAllowed();
+        // A hello may be the server starting over (a plugin reload) with no idea the panel is
+        // up: say it again on the next frame drawn. A repeat the server did not need is ignored.
+        drawnAcked = false;
         LOGGER.info("CraftBridge: server plugin {} (mod {}); phantom slots {}; middle-click sort {}",
                 pluginVersion, modVersion, phantomSlotsOff ? "off for us" : "on", sortAllowed ? "on" : "off");
     }
@@ -300,6 +311,7 @@ public final class CraftBridgeClient {
             return;
         }
         drawnAcked = true;
+        serverThinksDrawing = true;
         send(LinkProtocol.CHANNEL_STORAGE_ACK,
                 LinkProtocol.encode(new LinkProtocol.StorageAck(tracker.sequence(), true)));
         LOGGER.info("CraftBridge: storage panel is drawing; told the server it can drop the phantom slots");
@@ -314,9 +326,10 @@ public final class CraftBridgeClient {
      * left seeing neither. The panel says it is drawing again whenever it next draws a frame.
      */
     public void panelHidden() {
-        if (!drawnAcked) {
+        if (!serverThinksDrawing) {
             return;
         }
+        serverThinksDrawing = false;
         drawnAcked = false;
         send(LinkProtocol.CHANNEL_STORAGE_ACK,
                 LinkProtocol.encode(new LinkProtocol.StorageAck(tracker.sequence(), false)));

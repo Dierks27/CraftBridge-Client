@@ -22,6 +22,10 @@ import java.util.Set;
 /**
  * What is in nearby storage, drawn beside the crafting screen and clickable.
  *
+ * <p>It appears on whatever container screen the server has a storage session for: a Linked
+ * Workbench's crafting screen, or a Combo Chest's terminal (the server starts a session when
+ * one opens, over the terminal's own containers), next to the terminal's own GUI.
+ *
  * <p>Without this the mod had no user-visible surface at all: it knew what was in range and
  * used it for JEI's [+], but the player could see none of it — strictly worse than the phantom
  * slots it replaced, which at least showed 36 types and could be clicked.

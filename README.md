@@ -32,6 +32,8 @@ Minecraft version and loader, e.g. `craftbridge-client-26.3-fabric-0.3.0.jar`.
 * **Shows you your storage.** A panel down the left of the crafting screen lists every item
   type in range with its count, most numerous first. This is the surface the phantom slots
   used to be, without their 36-type ceiling.
+* **At a Combo Chest too.** Opening a Combo Chest shows the same panel beside its terminal
+  GUI, over the containers the terminal reads; the terminal itself looks and works as before.
 * **Click to take.** Left-click takes a stack to the cursor, right-click takes half a stack,
   shift-click takes as many as fit into your inventory — the same rules as a phantom slot,
   because the server runs both through the same code. The mod moves no items itself: it names
