@@ -18,11 +18,16 @@ import java.util.Locale;
 /**
  * The server's list of custom items, kept on disk between sessions.
  *
- * <p>JEI decides what its item list and its subtypes are when it loads its plugins, which can
- * happen before the server has told us anything. Rather than have the catalog miss that window
- * and silently do nothing, it is written down as it arrives and read back at plugin load, per
- * server. The practical effect is that a brand new custom item shows up in JEI's list from the
- * next JEI reload (or the next launch) rather than the instant the server sends it.
+ * <p>JEI decides what its item list and its subtypes are when it loads its plugins, and on
+ * joining a server it does so before the server has answered our hello, so before the catalog
+ * has arrived. The catalog is therefore written down as it arrives and read back whenever JEI
+ * loads its plugins, per server.
+ *
+ * <p>That makes the file one catalog behind: JEI's starts on joining read what the previous
+ * session's hello stored. An item created after that hello reaches JEI only at a JEI start
+ * after the next join's hello, so in practice after two rejoins, or one rejoin and anything that
+ * restarts JEI. A resource reload (F3+T) does not: it rebuilds JEI's ingredient list without
+ * re-running its plugins, so nothing here is re-read.
  */
 public final class CatalogCache {
 
@@ -54,16 +59,23 @@ public final class CatalogCache {
         }
     }
 
-    /** The catalog's items, decoded, or an empty list when there is none we can read. */
+    /**
+     * The stored catalog's items, decoded, or an empty list when there is none we can read.
+     * Every way of coming back empty says so in the log: an empty list here is otherwise
+     * indistinguishable from a server with no custom items.
+     */
     public static List<ItemStack> stacks() {
         RegistryAccess registries = ClientRegistries.current();
         if (registries == null) {
+            LOGGER.info("CraftBridge: not reading the item catalog: no connection to decode it against");
             return List.of();
         }
         byte[] payload;
+        Path path;
         try {
-            Path path = file();
+            path = file();
             if (!Files.isRegularFile(path)) {
+                LOGGER.info("CraftBridge: no stored item catalog for this server yet ({})", path);
                 return List.of();
             }
             payload = Files.readAllBytes(path);
@@ -71,19 +83,36 @@ public final class CatalogCache {
             LOGGER.warn("CraftBridge: could not read the item catalog: {}", e.toString());
             return List.of();
         }
+        List<LinkProtocol.CatalogEntry> entries;
         try {
-            List<ItemStack> stacks = new ArrayList<>();
-            for (LinkProtocol.CatalogEntry entry : LinkProtocol.decodeItemCatalog(payload).entries()) {
-                ItemStack stack = ItemBlobs.decode(entry.item(), registries);
-                if (!stack.isEmpty()) {
-                    stacks.add(stack);
-                }
-            }
-            return List.copyOf(stacks);
+            entries = LinkProtocol.decodeItemCatalog(payload).entries();
         } catch (RuntimeException e) {
             // Written by another version of the protocol: ignore it, the server will resend.
             LOGGER.info("CraftBridge: ignoring a stored item catalog this version cannot read ({})", e.toString());
             return List.of();
         }
+        List<ItemStack> stacks = decode(entries, registries);
+        LOGGER.info("CraftBridge: read {} of {} stored custom item(s) from {}", stacks.size(), entries.size(), path);
+        return stacks;
+    }
+
+    /**
+     * Decode a catalog's items. An entry this client cannot decode costs that entry only, not
+     * the whole catalog: it is named in the log and left out.
+     */
+    public static List<ItemStack> decode(List<LinkProtocol.CatalogEntry> entries, RegistryAccess registries) {
+        List<ItemStack> stacks = new ArrayList<>(entries.size());
+        for (LinkProtocol.CatalogEntry entry : entries) {
+            try {
+                ItemStack stack = ItemBlobs.decode(entry.item(), registries);
+                if (!stack.isEmpty()) {
+                    stacks.add(stack);
+                }
+            } catch (RuntimeException e) {
+                LOGGER.warn("CraftBridge: leaving out custom item \"{}\", which this client cannot read: {}",
+                        entry.displayName(), e.toString());
+            }
+        }
+        return List.copyOf(stacks);
     }
 }

@@ -289,9 +289,19 @@ public final class CraftBridgeClient {
     }
 
     private void onItemCatalog(byte[] payload) {
-        LOGGER.info("CraftBridge: item catalog, {} bytes", payload.length);
         catalog = LinkProtocol.decodeItemCatalog(payload).entries();
+        LOGGER.info("CraftBridge: item catalog, {} bytes, {} custom item(s): {}",
+                payload.length, catalog.size(), describe(catalog));
         CatalogCache.store(payload, catalog.size());
+    }
+
+    /** The first few names in a catalog, so the log says what arrived and not only how much. */
+    private static String describe(List<LinkProtocol.CatalogEntry> entries) {
+        StringBuilder names = new StringBuilder("[");
+        for (int i = 0; i < entries.size() && i < 20; i++) {
+            names.append(i == 0 ? "" : ", ").append(entries.get(i).displayName());
+        }
+        return names.append(entries.size() > 20 ? ", ...]" : "]").toString();
     }
 
     // ---- outgoing --------------------------------------------------------------------
