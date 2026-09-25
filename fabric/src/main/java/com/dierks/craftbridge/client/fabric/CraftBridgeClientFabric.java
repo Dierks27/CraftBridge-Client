@@ -51,6 +51,12 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
             // Returning false stops the screen underneath from also seeing the click.
             ScreenMouseEvents.allowMouseClick(screen).register((clicked, event) ->
                     !StoragePanel.click(clicked, event.x(), event.y(), event.button()));
+            // And the release of that click, or the screen treats it as a release outside its
+            // window and drops whatever is on the cursor. Drags in between go the same way.
+            ScreenMouseEvents.allowMouseRelease(screen).register((released, event) ->
+                    !StoragePanel.release(released, event.button()));
+            ScreenMouseEvents.allowMouseDrag(screen).register((dragged, event, horizontal, vertical) ->
+                    !StoragePanel.dragging(dragged, event.button()));
         });
     }
 

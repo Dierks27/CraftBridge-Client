@@ -37,6 +37,8 @@ public final class CraftBridgeClientNeoForge {
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onClientTick);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenRender);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenClick);
+        NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenRelease);
+        NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenDrag);
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -92,6 +94,22 @@ public final class CraftBridgeClientNeoForge {
     /** Cancelling stops the screen underneath from also seeing a click the panel took. */
     private static void onScreenClick(ScreenEvent.MouseButtonPressed.Pre event) {
         if (StoragePanel.click(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * And the release of that click: a container screen treats a release outside its window as
+     * "drop what is on the cursor", and the panel is outside its window.
+     */
+    private static void onScreenRelease(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (StoragePanel.release(event.getScreen(), event.getButton())) {
+            event.setCanceled(true);
+        }
+    }
+
+    private static void onScreenDrag(ScreenEvent.MouseDragged.Pre event) {
+        if (StoragePanel.dragging(event.getScreen(), event.getMouseButton())) {
             event.setCanceled(true);
         }
     }

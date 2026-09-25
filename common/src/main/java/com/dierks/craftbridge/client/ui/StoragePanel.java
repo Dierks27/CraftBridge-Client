@@ -13,8 +13,10 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * What is in nearby storage, drawn beside the crafting screen and clickable.
@@ -43,8 +45,21 @@ public final class StoragePanel {
     private static final int COUNT_TEXT = 0xFFFFFFFF;
 
     /** Where the panel is and what it is showing, so drawing and clicking cannot disagree. */
-    private record Layout(int left, int gridTop, int width, int height, List<StorageView.Held> shown) {
+    private record Layout(int left, int top, int gridTop, int width, int height, List<StorageView.Held> shown) {
+        boolean contains(double x, double y) {
+            return x >= left && x < left + width && y >= top && y < top + height;
+        }
     }
+
+    /**
+     * Mouse buttons whose press the panel took, so their release (and any drag in between) can
+     * be kept from the screen as well. A container screen that sees a release outside its own
+     * window with an item on the cursor throws that item on the ground — and to the screen, the
+     * panel is outside its window. Swallowing only the press left the release to do exactly that.
+     */
+    private static final Set<Integer> pressed = new HashSet<>();
+    /** The screen those presses belong to; a different screen starts with a clean slate. */
+    private static Screen pressedOn;
 
     private StoragePanel() {
     }
@@ -56,7 +71,7 @@ public final class StoragePanel {
         }
         Minecraft minecraft = Minecraft.getInstance();
         Font font = minecraft.font;
-        int top = layout.gridTop() - PADDING - font.lineHeight - PADDING;
+        int top = layout.top();
 
         graphics.fill(layout.left(), top, layout.left() + layout.width(), top + layout.height(), BACKGROUND);
         graphics.fill(layout.left(), top, layout.left() + layout.width(), top + 1, BORDER);
@@ -93,12 +108,15 @@ public final class StoragePanel {
      */
     public static boolean click(Screen screen, double mouseX, double mouseY, int button) {
         Layout layout = layout(screen);
-        if (layout == null) {
+        if (layout == null || !layout.contains(mouseX, mouseY)) {
             return false;
         }
+        // Anywhere on the panel is the panel's, header and padding included: to the player it
+        // looks like part of the GUI, and to the screen underneath it is outside its window.
+        track(screen).add(button);
         int index = hit(layout, mouseX, mouseY);
         if (index < 0) {
-            return false;
+            return true;
         }
         // hasShiftDown moved from Screen to Minecraft in 26.2; called on the instance so it
         // compiles whichever it is. The right button is named, not written as 1: 26.3 moved input
@@ -115,6 +133,32 @@ public final class StoragePanel {
             }
         });
         return true;
+    }
+
+    /**
+     * The release of a button whose press the panel took.
+     *
+     * @return true when the screen underneath should not see this release
+     */
+    public static boolean release(Screen screen, int button) {
+        return track(screen).remove(button);
+    }
+
+    /**
+     * A drag with a button whose press the panel took.
+     *
+     * @return true when the screen underneath should not see this drag
+     */
+    public static boolean dragging(Screen screen, int button) {
+        return track(screen).contains(button);
+    }
+
+    private static Set<Integer> track(Screen screen) {
+        if (screen != pressedOn) {
+            pressed.clear();
+            pressedOn = screen;
+        }
+        return pressed;
     }
 
     /** Which entry is under the pointer, or -1. */
@@ -159,7 +203,7 @@ public final class StoragePanel {
         int width = COLUMNS * CELL + PADDING * 2;
         int height = headerHeight + rows * CELL + PADDING * 2;
         int top = Math.max(MARGIN, (screen.height - height) / 2);
-        return new Layout(MARGIN, top + PADDING + headerHeight, width, height, held.subList(0, count));
+        return new Layout(MARGIN, top, top + PADDING + headerHeight, width, height, held.subList(0, count));
     }
 
     /** Most numerous first: the panel is a glance, not an index. */
