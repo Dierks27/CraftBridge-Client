@@ -131,11 +131,8 @@ public final class StorageTransferHandler implements IRecipeTransferHandler<Craf
     /** Can this be made from what the player carries plus what is in range? */
     private IRecipeTransferError check(CraftBridgeClient link, List<IRecipeSlotView> inputs, Player player,
                                        String recipe) {
-        if (link.storage().isEmpty()) {
-            // Live session, nothing in range: fall back to JEI's own message.
-            say(recipe, "CraftBridge handler, but the storage view is empty");
-            return helper.createUserErrorWithTooltip(Component.translatable("jei.tooltip.error.recipe.transfer.missing"));
-        }
+        // An empty view is not a reason to refuse: nothing in range still leaves what the player
+        // carries, which Craftability counts and the server fills from just the same.
         Craftability.Report report = Craftability.check(inputs, player, link.storage());
         say(recipe, "CraftBridge handler: " + (report.ok() ? "can be made"
                 : report.missing().size() + " slot(s) unsatisfied") + " — " + report.detail());
