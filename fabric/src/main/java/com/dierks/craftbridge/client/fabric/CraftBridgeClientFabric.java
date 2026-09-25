@@ -2,6 +2,7 @@ package com.dierks.craftbridge.client.fabric;
 
 import com.dierks.craftbridge.client.CraftBridgeClient;
 import com.dierks.craftbridge.client.LinkPayload;
+import com.dierks.craftbridge.client.RecipeResults;
 import com.dierks.craftbridge.client.ui.StoragePanel;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -10,8 +11,15 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import net.fabricmc.fabric.api.recipe.v1.FabricRecipeAccess;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.world.item.crafting.RecipeHolder;
+
+import java.util.Collection;
+import java.util.List;
 
 /**
  * The Fabric half: register the payload types, and pump the connection's events into the
@@ -43,6 +51,11 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
                 CraftBridgeClient.get().disconnected());
         ClientTickEvents.END_CLIENT_TICK.register(client -> CraftBridgeClient.get().clientTick());
 
+        // The recipes the server synced through Fabric API, read on demand from the current
+        // connection's recipe container rather than kept from an event: that container belongs
+        // to the connection, so it can never outlive it or leak into the next server.
+        RecipeResults.setSource(CraftBridgeClientFabric::syncedRecipes);
+
         // Draw the storage panel over every screen; the panel itself decides whether this one
         // is a crafting menu with a live session.
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
@@ -60,6 +73,20 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
             ScreenMouseEvents.allowMouseScroll(screen).register((scrolled, mouseX, mouseY, horizontal, vertical) ->
                     !StoragePanel.scroll(scrolled, mouseX, mouseY, vertical));
         });
+    }
+
+    private static Collection<RecipeHolder<?>> syncedRecipes() {
+        ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        if (connection == null) {
+            return List.of();
+        }
+        // Fabric API mixes FabricRecipeAccess into the client's recipe container; cast through
+        // Object so this compiles whatever the container's declared type admits to.
+        Object recipes = connection.recipes();
+        if (recipes instanceof FabricRecipeAccess access) {
+            return access.getSynchronizedRecipes().recipes();
+        }
+        return List.of();
     }
 
     private static String modVersion() {
