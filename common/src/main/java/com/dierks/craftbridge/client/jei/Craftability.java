@@ -4,6 +4,7 @@ import com.dierks.craftbridge.client.StorageView;
 import mezz.jei.api.gui.ingredient.IRecipeSlotView;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.Container;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
@@ -49,8 +50,11 @@ final class Craftability {
 
     static Report check(List<IRecipeSlotView> inputs, Player player, StorageView storage) {
         List<Available> pool = new ArrayList<>();
+        // The 36 main slots only, hotbar included: what the server fills from. Worn armour and
+        // the offhand are part of the same container but are not the player's to spend.
         Container inventory = player.getInventory();
-        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+        int mainSlots = Math.min(Inventory.INVENTORY_SIZE, inventory.getContainerSize());
+        for (int slot = 0; slot < mainSlots; slot++) {
             ItemStack stack = inventory.getItem(slot);
             if (!stack.isEmpty()) {
                 pool.add(new Available(stack, stack.getCount()));
