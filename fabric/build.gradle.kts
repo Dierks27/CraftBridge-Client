@@ -6,8 +6,11 @@ plugins {
     id("net.fabricmc.fabric-loom") version "1.17.20"
 }
 
-val mc = providers.gradleProperty("minecraftVersion").get()
-val jei = providers.gradleProperty("jeiVersion").get()
+// Per-target versions, set by the root build from versions/<mcTarget>.properties.
+val mc = extra["minecraftVersion"] as String
+val jei = extra["jeiVersion"] as String
+val fabricLoader = extra["fabricLoaderVersion"] as String
+val fabricApi = extra["fabricApiVersion"] as String
 
 base { archivesName.set("craftbridge-client-$mc-fabric") }
 
@@ -28,8 +31,8 @@ dependencies {
     // Plain configurations, not modImplementation/modCompileOnly: those exist only to remap a
     // dependency into the development mappings, and Loom does not create them at all when there
     // is no obfuscation to undo. Mod jars are now ordinary jars.
-    implementation("net.fabricmc:fabric-loader:${providers.gradleProperty("fabricLoaderVersion").get()}")
-    implementation("net.fabricmc.fabric-api:fabric-api:${providers.gradleProperty("fabricApiVersion").get()}")
+    implementation("net.fabricmc:fabric-loader:$fabricLoader")
+    implementation("net.fabricmc.fabric-api:fabric-api:$fabricApi")
 
     // Compile against JEI's loader-agnostic API; run against the full Fabric jar.
     compileOnly("mezz.jei:jei-$mc-common-api:$jei")

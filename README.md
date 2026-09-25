@@ -16,15 +16,16 @@ uninstalled. It has no items, no blocks, no GUI, no keybinds and no config.
 
 ## Requirements
 
-| | |
-|---|---|
-| Minecraft | 26.2 |
-| Loader | Fabric (loader 0.19.5+, Fabric API) **or** NeoForge 26.2.0.82+ |
-| JEI | 30.32.0.209 |
-| Side | **Client only.** Do not put it on the server. |
-| Server | CraftBridge 0.10+ |
+| | Minecraft 26.2 | Minecraft 26.3 |
+|---|---|---|
+| Fabric | loader 0.19.5+, Fabric API 0.160.0+26.2 | loader 0.19.5+, Fabric API 0.161.0+26.3 |
+| NeoForge | 26.2.0.82+ | 26.3.0.16-beta+ |
+| JEI | 30.32.0.209 | 31.7.0.34 |
+| Side | **Client only.** Do not put it on the server. | |
+| Server | CraftBridge 0.10+ | CraftBridge 0.13+ on Paper 26.3 |
 
-Both loaders are built from the same sources; download whichever jar matches your instance.
+Every target is built from the same sources; download the jar whose name matches your
+Minecraft version and loader, e.g. `craftbridge-client-26.3-fabric-0.3.0.jar`.
 
 ## What it does
 
@@ -59,14 +60,21 @@ the server's own permission checks. If the server says no, the answer is no.
 ## Building
 
 ```
-./gradlew build
+./gradlew build                    # Minecraft 26.2, the default (mcTarget in gradle.properties)
+./gradlew build -PmcTarget=26.3    # Minecraft 26.3
 ```
 
-Jars land in `fabric/build/libs/` and `neoforge/build/libs/`.
+Jars land in `fabric/build/libs/` and `neoforge/build/libs/`, named after their Minecraft
+version, so both targets' jars can sit side by side. CI builds every target on each push.
+
+Each target's Minecraft, JEI, Fabric and NeoForge versions are pinned in
+`versions/<minecraft>.properties`; everything else is shared. Adding a Minecraft version means
+adding a file there and a matrix entry in `.github/workflows/build.yml`.
 
 ## Layout
 
 ```
+versions/  per-Minecraft dependency versions, one .properties file per target
 common/    shared sources, compiled by both loader modules (not a Gradle project of its own)
 fabric/    Fabric entry point and metadata
 neoforge/  NeoForge entry point and metadata

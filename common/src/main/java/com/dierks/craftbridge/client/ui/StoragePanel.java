@@ -2,6 +2,7 @@ package com.dierks.craftbridge.client.ui;
 
 import com.dierks.craftbridge.client.CraftBridgeClient;
 import com.dierks.craftbridge.client.StorageView;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -100,8 +101,10 @@ public final class StoragePanel {
             return false;
         }
         // hasShiftDown moved from Screen to Minecraft in 26.2; called on the instance so it
-        // compiles whichever it is.
-        String mode = Minecraft.getInstance().hasShiftDown() ? "ALL" : (button == 1 ? "HALF" : "ONE");
+        // compiles whichever it is. The right button is named, not written as 1: 26.3 moved input
+        // from GLFW (left 0, right 1) to SDL3, whose buttons are numbered differently.
+        String mode = Minecraft.getInstance().hasShiftDown() ? "ALL"
+                : (button == InputConstants.MOUSE_BUTTON_RIGHT ? "HALF" : "ONE");
         StorageView.Held entry = layout.shown().get(index);
         CraftBridgeClient.get().requestPull(entry.key(), mode, (ok, message) -> {
             if (!ok && message != null && !message.isEmpty()) {
