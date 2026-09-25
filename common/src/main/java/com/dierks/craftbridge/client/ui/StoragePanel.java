@@ -107,6 +107,12 @@ public final class StoragePanel {
      * @return true when the click was the panel's, and the screen underneath should not see it
      */
     public static boolean click(Screen screen, double mouseX, double mouseY, int button) {
+        // Left and right mean something here; middle and the side buttons do not, and pass
+        // through to the screen rather than taking a full stack as a left-click would. Named,
+        // not numbered: 26.3 moved input from GLFW to SDL3, which numbers buttons differently.
+        if (button != InputConstants.MOUSE_BUTTON_LEFT && button != InputConstants.MOUSE_BUTTON_RIGHT) {
+            return false;
+        }
         Layout layout = layout(screen);
         if (layout == null || !layout.contains(mouseX, mouseY)) {
             return false;
@@ -119,8 +125,7 @@ public final class StoragePanel {
             return true;
         }
         // hasShiftDown moved from Screen to Minecraft in 26.2; called on the instance so it
-        // compiles whichever it is. The right button is named, not written as 1: 26.3 moved input
-        // from GLFW (left 0, right 1) to SDL3, whose buttons are numbered differently.
+        // compiles whichever it is.
         String mode = Minecraft.getInstance().hasShiftDown() ? "ALL"
                 : (button == InputConstants.MOUSE_BUTTON_RIGHT ? "HALF" : "ONE");
         StorageView.Held entry = layout.shown().get(index);
