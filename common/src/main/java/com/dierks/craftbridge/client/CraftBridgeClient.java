@@ -136,6 +136,7 @@ public final class CraftBridgeClient {
         storage.clear();
         catalog = List.of();
         JeiRestart.forget();
+        com.dierks.craftbridge.client.jei.CraftCount.forget();
         helloAttemptsLeft = 0;
         failAllPending("disconnected");
     }
@@ -188,7 +189,13 @@ public final class CraftBridgeClient {
         if (version >= 0 && version != LinkProtocol.VERSION) {
             LOGGER.warn("CraftBridge: the server speaks link protocol version {} on {}, this client {};"
                     + " going dormant. Update whichever is older.", version, channel, LinkProtocol.VERSION);
+            boolean wasLinked = sender != null;
             goDormant();
+            if (wasLinked) {
+                tellPlayer("CraftBridge: the server speaks link protocol version " + version
+                        + ", this client version " + LinkProtocol.VERSION + "; the mod is off for this server."
+                        + " Update whichever is older.");
+            }
             return;
         }
         try {
@@ -206,6 +213,14 @@ public final class CraftBridgeClient {
             if (LinkProtocol.CHANNEL_STORAGE.equals(channel)) {
                 storageUnreadable();
             }
+        }
+    }
+
+    /** A line in the player's chat, when there is a player to show it to. */
+    private static void tellPlayer(String message) {
+        net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+        if (player != null) {
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal(message));
         }
     }
 
@@ -359,13 +374,25 @@ public final class CraftBridgeClient {
      */
     public boolean requestTransfer(String recipeId, List<LinkProtocol.SlotChoices> slots,
                                    boolean maxTransfer, TransferOutcome outcome) {
+        return requestTransfer(recipeId, slots, maxTransfer, 0, false, outcome);
+    }
+
+    /**
+     * @param craftCount how many crafts to fill the grid for; 0 for JEI's usual one, or as many
+     *                   as possible with {@code maxTransfer}. The server bounds it by what is to
+     *                   hand and by stack sizes
+     * @param leaveOne   "All but one": leave one of each ingredient in every container slot
+     */
+    public boolean requestTransfer(String recipeId, List<LinkProtocol.SlotChoices> slots, boolean maxTransfer,
+                                   int craftCount, boolean leaveOne, TransferOutcome outcome) {
         if (sender == null) {
             return false;
         }
         int requestId = nextRequestId++;
         pending.put(requestId, new Pending(outcome, tick + RESULT_TIMEOUT_TICKS));
         send(LinkProtocol.CHANNEL_TRANSFER_REQUEST, LinkProtocol.encode(new LinkProtocol.TransferRequest(
-                requestId, tracker.sequence(), maxTransfer, true, recipeId == null ? "" : recipeId, slots)));
+                requestId, tracker.sequence(), maxTransfer, true, Math.max(0, craftCount), leaveOne,
+                recipeId == null ? "" : recipeId, slots)));
         return true;
     }
 

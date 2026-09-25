@@ -22,7 +22,7 @@ uninstalled. It has no items, no blocks, no keybinds of its own and no config.
 | NeoForge | 26.2.0.82+ | 26.3.0.16-beta+ |
 | JEI | 30.32.0.209 | 31.7.0.34 |
 | Side | **Client only.** Do not put it on the server. | |
-| Server | CraftBridge 0.10+ (middle-click sort: 0.14+) | CraftBridge 0.13+ on Paper 26.3 (middle-click sort: 0.14+) |
+| Server | CraftBridge 0.14+ (link protocol 3) | CraftBridge 0.14+ on Paper 26.3 (link protocol 3) |
 
 Every target is built from the same sources; download the jar whose name matches your
 Minecraft version and loader, e.g. `craftbridge-client-26.3-fabric-0.3.0.jar`.
@@ -48,6 +48,14 @@ Minecraft version and loader, e.g. `craftbridge-client-26.3-fabric-0.3.0.jar`.
   and nothing else. The mod never moves an item itself and never tells the server what it has:
   the server holds the inventory, does its own permission and reach checks, and decides what
   may be taken and from where. A modified client gets nothing it could not get by clicking.
+* **Choose how many.** At a Linked Workbench, JEI's [+] for a crafting recipe takes a count:
+  scroll the mouse wheel over it (shift: steps of 8) and its tooltip shows "Crafts: N"; a
+  left-click then fills the grid for that many. Right-click the [+] for a small prompt: type a
+  number and press Craft, or pick 1, 8, 16, 64, Max (what shift-click does) or **All but one**
+  (as many as possible while every chest slot an ingredient comes from keeps one of it). The
+  server fills the grid for at most that many — bounded by what is in range and by stack
+  sizes — and says so in chat when it cannot. Without a CraftBridge session the [+] is JEI's
+  own and none of this applies.
 * **Middle-click to sort.** In a chest, barrel or shulker box screen, middle-click (your
   pick-block binding) over the container's slots sorts the container; over your own slots it
   sorts your main rows. The server does the sorting, by the same rules as `/sort`, and only
@@ -97,7 +105,9 @@ code compiles unchanged on either side, and each loader module simply adds
 `common/src/main/java/com/dierks/craftbridge/link/` is **the same code as the plugin's own
 `link` package**, copied rather than shared. It is the wire contract: pure framing, no
 Minecraft and no Bukkit, so both sides can be sure they agree. Every payload starts with a
-protocol version, and a mismatched pair refuses to talk rather than misreading each other.
+protocol version, and a mismatched pair refuses to talk rather than misreading each other:
+this release speaks version 3, and on a server that speaks 2 (CraftBridge 0.13) the mod stays
+dormant, the log says why, and the server or the mod says so once in chat.
 When you change it, change it in both repositories and release them together.
 
 The two copies are identical today but for one import line, because the plugin still keeps
@@ -109,6 +119,14 @@ connection's join/leave/tick events to `CraftBridgeClient`. Everything the mod a
 is in `common/`.
 
 ## Notes
+
+* **How the [+] learns about the mouse.** JEI's API has no hook for its transfer button's
+  input, but it does call a transfer error's `showError` while the pointer is on the button.
+  So for a recipe CraftBridge can fill, the handler answers with a *cosmetic* error that blocks
+  nothing and draws no highlight: it keeps the button active, adds the count to its tooltip,
+  and records which recipe's button is under the pointer and where. The mod's own screen mouse
+  hooks, which see a click or a scroll before JEI's recipe screen does, act only when the
+  pointer is exactly where that button was drawn a moment ago.
 
 * **How custom items reach JEI.** JEI decides its item list and its subtypes when it loads its
   plugins, and on joining it does that before the server has answered the hello, so before the

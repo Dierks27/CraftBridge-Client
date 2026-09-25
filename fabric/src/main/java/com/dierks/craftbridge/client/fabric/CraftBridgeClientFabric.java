@@ -3,6 +3,7 @@ package com.dierks.craftbridge.client.fabric;
 import com.dierks.craftbridge.client.CraftBridgeClient;
 import com.dierks.craftbridge.client.LinkPayload;
 import com.dierks.craftbridge.client.RecipeResults;
+import com.dierks.craftbridge.client.jei.CraftCount;
 import com.dierks.craftbridge.client.ui.ChestSort;
 import com.dierks.craftbridge.client.ui.StoragePanel;
 import net.fabricmc.api.ClientModInitializer;
@@ -76,8 +77,11 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
             // Returning false stops the screen underneath from also seeing the click. The panel
             // first (it only takes left and right), then middle-click sorting. JEI registers
             // its own in BEFORE_INIT, so a click JEI takes never reaches either.
+            // A right-click on JEI's [+] opens the craft-count prompt; JEI's recipe screen handles
+            // its own clicks inside the screen, after these.
             ScreenMouseEvents.allowMouseClick(screen).register((clicked, event) ->
                     !StoragePanel.click(clicked, event.x(), event.y(), event.button())
+                            && !CraftCount.click(clicked, event.x(), event.y(), event.button())
                             && !ChestSort.click(clicked, event));
             // And the release of that click, or the screen treats it as a release outside its
             // window and drops whatever is on the cursor. Drags in between go the same way.
@@ -86,8 +90,10 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
                             && !ChestSort.release(released, event.button()));
             ScreenMouseEvents.allowMouseDrag(screen).register((dragged, event, horizontal, vertical) ->
                     !StoragePanel.dragging(dragged, event.button()));
+            // The wheel over the panel scrolls it; over JEI's [+] it sets the craft count.
             ScreenMouseEvents.allowMouseScroll(screen).register((scrolled, mouseX, mouseY, horizontal, vertical) ->
-                    !StoragePanel.scroll(scrolled, mouseX, mouseY, vertical));
+                    !StoragePanel.scroll(scrolled, mouseX, mouseY, vertical)
+                            && !CraftCount.scroll(scrolled, mouseX, mouseY, vertical));
         });
     }
 

@@ -2,6 +2,7 @@ package com.dierks.craftbridge.client.neoforge;
 
 import com.dierks.craftbridge.client.CraftBridgeClient;
 import com.dierks.craftbridge.client.LinkPayload;
+import com.dierks.craftbridge.client.jei.CraftCount;
 import com.dierks.craftbridge.client.ui.ChestSort;
 import com.dierks.craftbridge.client.ui.StoragePanel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
@@ -111,9 +112,13 @@ public final class CraftBridgeClientNeoForge {
         StoragePanel.render(event.getScreen(), event.getGuiGraphics());
     }
 
-    /** Cancelling stops the screen underneath from also seeing a click the panel took. */
+    /**
+     * Cancelling stops the screen underneath from also seeing a click the panel took, or a
+     * right-click on JEI's [+] that opened the craft-count prompt.
+     */
     private static void onScreenClick(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (StoragePanel.click(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())) {
+        if (StoragePanel.click(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())
+                || CraftCount.click(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())) {
             event.setCanceled(true);
         }
     }
@@ -143,9 +148,13 @@ public final class CraftBridgeClientNeoForge {
         }
     }
 
-    /** The mouse wheel over the panel scrolls the panel, not the screen underneath. */
+    /**
+     * The mouse wheel over the panel scrolls the panel, and over JEI's [+] sets the craft count,
+     * rather than the screen underneath scrolling.
+     */
     private static void onScreenScroll(ScreenEvent.MouseScrolled.Pre event) {
-        if (StoragePanel.scroll(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getScrollDeltaY())) {
+        if (StoragePanel.scroll(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getScrollDeltaY())
+                || CraftCount.scroll(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getScrollDeltaY())) {
             event.setCanceled(true);
         }
     }
