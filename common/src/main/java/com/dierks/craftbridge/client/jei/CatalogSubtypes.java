@@ -35,6 +35,11 @@ final class CatalogSubtypes implements ISubtypeInterpreter<ItemStack> {
 
     @Override
     public Object getSubtypeData(ItemStack stack, UidContext context) {
+        return key(stack);
+    }
+
+    /** What sets this stack apart from a plain one of its item, or null when nothing does. */
+    static Object key(ItemStack stack) {
         Component name = stack.get(DataComponents.CUSTOM_NAME);
         if (name != null) {
             return name.getString();

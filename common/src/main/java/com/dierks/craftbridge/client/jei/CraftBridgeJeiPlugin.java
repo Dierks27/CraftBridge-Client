@@ -62,12 +62,14 @@ public class CraftBridgeJeiPlugin implements IModPlugin {
      */
     @Override
     public void registerItemSubtypes(ISubtypeRegistration registration) {
+        List<ItemStack> custom = CatalogCache.stacks();
         Set<Item> seen = new HashSet<>();
-        for (ItemStack stack : CatalogCache.stacks()) {
+        for (ItemStack stack : custom) {
             if (seen.add(stack.getItem())) {
                 registration.registerSubtypeInterpreter(stack.getItem(), CatalogSubtypes.INSTANCE);
             }
         }
+        CustomItems.registered(custom);
         LOGGER.info("CraftBridge: registered subtypes for {} custom item base(s)", seen.size());
     }
 
