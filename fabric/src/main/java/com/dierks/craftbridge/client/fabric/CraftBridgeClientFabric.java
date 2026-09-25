@@ -74,11 +74,11 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             ScreenEvents.afterExtract(screen).register((rendered, graphics, mouseX, mouseY, tickProgress) ->
                     StoragePanel.render(rendered, graphics));
-            // Returning false stops the screen underneath from also seeing the click. The panel
-            // first (it only takes left and right), then middle-click sorting. JEI registers
-            // its own in BEFORE_INIT, so a click JEI takes never reaches either.
-            // A right-click on JEI's [+] opens the craft-count prompt; JEI's recipe screen handles
-            // its own clicks inside the screen, after these.
+            // Returning false stops the screen underneath from also seeing the click. In order:
+            // the panel (left and right only), a right-click on JEI's [+] (the craft-count
+            // prompt), then middle-click sorting. JEI's overlay registers its own in BEFORE_INIT,
+            // so a click it takes reaches none of these; its recipe screen handles clicks inside
+            // the screen itself, after them.
             ScreenMouseEvents.allowMouseClick(screen).register((clicked, event) ->
                     !StoragePanel.click(clicked, event.x(), event.y(), event.button())
                             && !CraftCount.click(clicked, event.x(), event.y(), event.button())
