@@ -12,7 +12,7 @@ because you no longer need them.
 
 **Without a CraftBridge server, the mod is inert.** It says hello once after joining; if nothing
 answers, it stays dormant for the whole session and JEI behaves exactly as it does with the mod
-uninstalled. It has no items, no blocks, no GUI, no keybinds and no config.
+uninstalled. It has no items, no blocks, no keybinds of its own and no config.
 
 ## Requirements
 
@@ -22,7 +22,7 @@ uninstalled. It has no items, no blocks, no GUI, no keybinds and no config.
 | NeoForge | 26.2.0.82+ | 26.3.0.16-beta+ |
 | JEI | 30.32.0.209 | 31.7.0.34 |
 | Side | **Client only.** Do not put it on the server. | |
-| Server | CraftBridge 0.10+ | CraftBridge 0.13+ on Paper 26.3 |
+| Server | CraftBridge 0.10+ (middle-click sort: 0.14+) | CraftBridge 0.13+ on Paper 26.3 (middle-click sort: 0.14+) |
 
 Every target is built from the same sources; download the jar whose name matches your
 Minecraft version and loader, e.g. `craftbridge-client-26.3-fabric-0.3.0.jar`.
@@ -48,6 +48,14 @@ Minecraft version and loader, e.g. `craftbridge-client-26.3-fabric-0.3.0.jar`.
   and nothing else. The mod never moves an item itself and never tells the server what it has:
   the server holds the inventory, does its own permission and reach checks, and decides what
   may be taken and from where. A modified client gets nothing it could not get by clicking.
+* **Middle-click to sort.** In a chest, barrel or shulker box screen, middle-click (your
+  pick-block binding) over the container's slots sorts the container; over your own slots it
+  sorts your main rows. The server does the sorting, by the same rules as `/sort`, and only
+  when it has said it will (a flag in its hello: sorting on, `craftbridge.sort`, and the
+  "Middle-click sort" toggle in `/sort settings`, which is on by default). Anywhere else, or
+  in creative (where middle-click copies a stack), or with an item on the cursor, the click is
+  left alone. Another sorting mod that also uses middle-click will not fire while this is on;
+  turn the toggle off in `/sort settings` to give the click back to it.
 * **Shows the server's custom items.** Renamed items carrying plugin data are not registry
   entries of their own, so JEI has no tile for them and no way to look their recipes up. The
   server sends a catalog of them and the mod registers each as a JEI subtype.

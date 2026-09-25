@@ -27,6 +27,11 @@ public final class CraftBridgeClient {
     private static final Logger LOGGER = LogUtils.getLogger();
     /** How long to wait for the server's verdict on a transfer before telling JEI it failed. */
     private static final int RESULT_TIMEOUT_TICKS = 200;
+    /**
+     * How long a middle-click sort waits for its answer. Short: the server drops requests over
+     * its rate limit without answering, and only one sort is in flight at a time.
+     */
+    private static final int SORT_TIMEOUT_TICKS = 40;
     /** The hello waits a moment: a Paper server declares its channels shortly after we join. */
     private static final int FIRST_HELLO_TICKS = 20;
     private static final int HELLO_RETRY_TICKS = 60;
@@ -50,7 +55,14 @@ public final class CraftBridgeClient {
         void completed(boolean ok, String message);
     }
 
-    private record Pending(TransferOutcome outcome, int deadline) {
+    /**
+     * @param quiet a request whose failure only the server's own words should explain: a
+     *              timeout, a disconnect or a session end completes it with an empty message
+     */
+    private record Pending(TransferOutcome outcome, int deadline, boolean quiet) {
+        Pending(TransferOutcome outcome, int deadline) {
+            this(outcome, deadline, false);
+        }
     }
 
     private final SnapshotTracker tracker = new SnapshotTracker();
@@ -61,6 +73,10 @@ public final class CraftBridgeClient {
     private String modVersion = "dev";
     private String pluginVersion;
     private boolean phantomSlotsOff;
+    /** The server's hello said a middle-click will sort for us ({@link LinkProtocol#FLAG_SORT}). */
+    private boolean sortAllowed;
+    /** The id of the sort request still waiting for its answer, or 0: one at a time. */
+    private int sortPending;
     private boolean sessionLive;
     private int nextRequestId = 1;
     private int tick;
@@ -112,6 +128,8 @@ public final class CraftBridgeClient {
         sender = null;
         pluginVersion = null;
         phantomSlotsOff = false;
+        sortAllowed = false;
+        sortPending = 0;
         sessionLive = false;
         drawnAcked = false;
         storageFailures = 0;
@@ -133,6 +151,16 @@ public final class CraftBridgeClient {
 
     public boolean phantomSlotsOff() {
         return phantomSlotsOff;
+    }
+
+    /** True when the server said a middle-click in a container screen should sort. */
+    public boolean sortAllowed() {
+        return sortAllowed && sender != null;
+    }
+
+    /** True while a sort request is waiting for the server's answer. */
+    public boolean sortInFlight() {
+        return sortPending != 0 && pending.containsKey(sortPending);
     }
 
     public StorageView storage() {
@@ -209,11 +237,17 @@ public final class CraftBridgeClient {
         storage.clear();
     }
 
+    /**
+     * The server's hello, on join and again whenever one of its flags changes (the player's sort
+     * settings, a plugin reload). Only the version and the flags are taken from it; a repeated
+     * hello resets nothing else.
+     */
     private void onServerHello(LinkProtocol.ServerHello hello) {
         pluginVersion = hello.pluginVersion();
         phantomSlotsOff = hello.phantomSlotsOff();
-        LOGGER.info("CraftBridge: server plugin {} (mod {}); phantom slots {}",
-                pluginVersion, modVersion, phantomSlotsOff ? "off for us" : "on");
+        sortAllowed = hello.sortAllowed();
+        LOGGER.info("CraftBridge: server plugin {} (mod {}); phantom slots {}; middle-click sort {}",
+                pluginVersion, modVersion, phantomSlotsOff ? "off for us" : "on", sortAllowed ? "on" : "off");
     }
 
     private void onStorage(LinkProtocol.Storage message) {
@@ -353,6 +387,26 @@ public final class CraftBridgeClient {
         return true;
     }
 
+    /**
+     * The player middle-clicked a slot in a container screen. Names the screen (its menu id,
+     * so the server never sorts a screen that has since been replaced) and which half, nothing
+     * more. One request at a time.
+     *
+     * @param target {@link LinkProtocol#SORT_TARGET_CONTAINER} or {@link LinkProtocol#SORT_TARGET_PLAYER}
+     * @return false when there is nothing to ask, or a sort is already waiting for its answer
+     */
+    public boolean requestSort(int containerId, String target, TransferOutcome outcome) {
+        if (sender == null || !sortAllowed || sortInFlight()) {
+            return false;
+        }
+        int requestId = nextRequestId++;
+        sortPending = requestId;
+        pending.put(requestId, new Pending(outcome, tick + SORT_TIMEOUT_TICKS, true));
+        send(LinkProtocol.CHANNEL_SORT_REQUEST,
+                LinkProtocol.encode(new LinkProtocol.SortRequest(requestId, containerId, target)));
+        return true;
+    }
+
     private void send(String channel, byte[] payload) {
         LinkSender to = sender;
         if (to == null) {
@@ -390,7 +444,7 @@ public final class CraftBridgeClient {
             }
         }
         for (Pending waiting : expired) {
-            waiting.outcome().completed(false, "The server did not answer.");
+            waiting.outcome().completed(false, waiting.quiet() ? "" : "The server did not answer.");
         }
     }
 
@@ -398,7 +452,7 @@ public final class CraftBridgeClient {
         List<Pending> waiting = List.copyOf(pending.values());
         pending.clear();
         for (Pending one : waiting) {
-            one.outcome().completed(false, reason);
+            one.outcome().completed(false, one.quiet() ? "" : reason);
         }
     }
 }

@@ -3,6 +3,7 @@ package com.dierks.craftbridge.client.fabric;
 import com.dierks.craftbridge.client.CraftBridgeClient;
 import com.dierks.craftbridge.client.LinkPayload;
 import com.dierks.craftbridge.client.RecipeResults;
+import com.dierks.craftbridge.client.ui.ChestSort;
 import com.dierks.craftbridge.client.ui.StoragePanel;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -14,10 +15,13 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.recipe.v1.FabricRecipeAccess;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.crafting.RecipeHolder;
 
+import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.List;
 
@@ -28,6 +32,13 @@ import java.util.List;
 public final class CraftBridgeClientFabric implements ClientModInitializer {
 
     private static final String MOD_ID = "craftbridge_client";
+    /**
+     * {@code AbstractContainerScreen.hoveredSlot}: protected, and Fabric has no getter for it
+     * (NeoForge adds one). Read reflectively rather than through an access widener, so the
+     * build stays as it is; the runtime names are Mojang's on both versions. Null when it cannot
+     * be reached, and then middle-click sorting simply never finds a slot.
+     */
+    private static final Field HOVERED_SLOT = findHoveredSlot();
 
     @Override
     public void onInitializeClient() {
@@ -55,19 +66,24 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
         // connection's recipe container rather than kept from an event: that container belongs
         // to the connection, so it can never outlive it or leak into the next server.
         RecipeResults.setSource(CraftBridgeClientFabric::syncedRecipes);
+        ChestSort.setHoveredSlotLookup(CraftBridgeClientFabric::hoveredSlot);
 
         // Draw the storage panel over every screen; the panel itself decides whether this one
         // is a crafting menu with a live session.
         ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
             ScreenEvents.afterExtract(screen).register((rendered, graphics, mouseX, mouseY, tickProgress) ->
                     StoragePanel.render(rendered, graphics));
-            // Returning false stops the screen underneath from also seeing the click.
+            // Returning false stops the screen underneath from also seeing the click. The panel
+            // first (it only takes left and right), then middle-click sorting. JEI registers
+            // its own in BEFORE_INIT, so a click JEI takes never reaches either.
             ScreenMouseEvents.allowMouseClick(screen).register((clicked, event) ->
-                    !StoragePanel.click(clicked, event.x(), event.y(), event.button()));
+                    !StoragePanel.click(clicked, event.x(), event.y(), event.button())
+                            && !ChestSort.click(clicked, event));
             // And the release of that click, or the screen treats it as a release outside its
             // window and drops whatever is on the cursor. Drags in between go the same way.
             ScreenMouseEvents.allowMouseRelease(screen).register((released, event) ->
-                    !StoragePanel.release(released, event.button()));
+                    !StoragePanel.release(released, event.button())
+                            && !ChestSort.release(released, event.button()));
             ScreenMouseEvents.allowMouseDrag(screen).register((dragged, event, horizontal, vertical) ->
                     !StoragePanel.dragging(dragged, event.button()));
             ScreenMouseEvents.allowMouseScroll(screen).register((scrolled, mouseX, mouseY, horizontal, vertical) ->
@@ -87,6 +103,27 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
             return access.getSynchronizedRecipes().recipes();
         }
         return List.of();
+    }
+
+    private static Field findHoveredSlot() {
+        try {
+            Field field = AbstractContainerScreen.class.getDeclaredField("hoveredSlot");
+            field.setAccessible(true);
+            return field;
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static Slot hoveredSlot(AbstractContainerScreen<?> screen) {
+        if (HOVERED_SLOT == null) {
+            return null;
+        }
+        try {
+            return HOVERED_SLOT.get(screen) instanceof Slot slot ? slot : null;
+        } catch (IllegalAccessException | RuntimeException e) {
+            return null;
+        }
     }
 
     private static String modVersion() {

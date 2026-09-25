@@ -2,10 +2,12 @@ package com.dierks.craftbridge.client.neoforge;
 
 import com.dierks.craftbridge.client.CraftBridgeClient;
 import com.dierks.craftbridge.client.LinkPayload;
+import com.dierks.craftbridge.client.ui.ChestSort;
 import com.dierks.craftbridge.client.ui.StoragePanel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
@@ -41,6 +43,11 @@ public final class CraftBridgeClientNeoForge {
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenRelease);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenDrag);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenScroll);
+        // Middle-click sorting at LOW: JEI's own listener (NORMAL) and the storage panel's get
+        // the click first, and a click either of them cancelled never reaches this one.
+        ChestSort.setHoveredSlotLookup(screen -> screen.getHoveredSlot());
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOW, ScreenEvent.MouseButtonPressed.Pre.class,
+                CraftBridgeClientNeoForge::onScreenSortClick);
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -111,12 +118,21 @@ public final class CraftBridgeClientNeoForge {
         }
     }
 
+    /** A middle-click over a slot, when the server said it will sort: a sort request instead. */
+    private static void onScreenSortClick(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (ChestSort.click(event.getScreen(), event.getMouseButtonEvent())) {
+            event.setCanceled(true);
+        }
+    }
+
     /**
      * And the release of that click: a container screen treats a release outside its window as
-     * "drop what is on the cursor", and the panel is outside its window.
+     * "drop what is on the cursor", and the panel is outside its window. A sort's release is
+     * kept from the screen the same way.
      */
     private static void onScreenRelease(ScreenEvent.MouseButtonReleased.Pre event) {
-        if (StoragePanel.release(event.getScreen(), event.getButton())) {
+        if (StoragePanel.release(event.getScreen(), event.getButton())
+                || ChestSort.release(event.getScreen(), event.getButton())) {
             event.setCanceled(true);
         }
     }
