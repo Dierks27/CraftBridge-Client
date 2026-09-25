@@ -3,6 +3,7 @@ package com.dierks.craftbridge.client.neoforge;
 import com.dierks.craftbridge.client.CraftBridgeClient;
 import com.dierks.craftbridge.client.LinkPayload;
 import com.dierks.craftbridge.client.ui.StoragePanel;
+import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -50,11 +51,22 @@ public final class CraftBridgeClientNeoForge {
                 // Both handlers, not one: the three-argument playBidirectional registers the
                 // handler for the SERVERBOUND direction only and leaves the clientbound side
                 // to RegisterClientPayloadHandlersEvent, which fails startup validation with
-                // "clientbound payloads are missing client-side handlers". The serverbound one
-                // can never fire in a client-only mod; it is there to satisfy the signature.
-                IPayloadHandler<LinkPayload> handler = (payload, context) ->
-                        context.enqueueWork(() ->
-                                CraftBridgeClient.get().receive(payload.channel(), payload.data()));
+                // "clientbound payloads are missing client-side handlers".
+                //
+                // The serverbound side does fire, though, whenever this client hosts the world:
+                // in singleplayer or on a LAN world the integrated server receives our own
+                // hello. It must not reach the client code — that would run it on the server
+                // thread and read our hello as a server's reply — so the handler only acts on
+                // what arrives over the client's own connection to a server. One handler that
+                // checks, in both places, so the answer does not depend on argument order.
+                IPayloadHandler<LinkPayload> handler = (payload, context) -> {
+                    Object listener = context.listener();
+                    if (!(listener instanceof ClientPacketListener)) {
+                        return; // received by the integrated server: not ours to handle
+                    }
+                    context.enqueueWork(() ->
+                            CraftBridgeClient.get().receive(payload.channel(), payload.data()));
+                };
                 registrar.playBidirectional(type, LinkPayload.codec(type), handler, handler);
             } else {
                 registrar.playToClient(type, LinkPayload.codec(type), (payload, context) ->
