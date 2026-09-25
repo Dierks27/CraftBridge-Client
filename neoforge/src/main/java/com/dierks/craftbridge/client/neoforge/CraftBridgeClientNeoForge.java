@@ -39,6 +39,7 @@ public final class CraftBridgeClientNeoForge {
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenClick);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenRelease);
         NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenDrag);
+        NeoForge.EVENT_BUS.addListener(CraftBridgeClientNeoForge::onScreenScroll);
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -110,6 +111,13 @@ public final class CraftBridgeClientNeoForge {
 
     private static void onScreenDrag(ScreenEvent.MouseDragged.Pre event) {
         if (StoragePanel.dragging(event.getScreen(), event.getMouseButton())) {
+            event.setCanceled(true);
+        }
+    }
+
+    /** The mouse wheel over the panel scrolls the panel, not the screen underneath. */
+    private static void onScreenScroll(ScreenEvent.MouseScrolled.Pre event) {
+        if (StoragePanel.scroll(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getScrollDeltaY())) {
             event.setCanceled(true);
         }
     }

@@ -113,5 +113,9 @@ is in `common/`.
   announcement can be dropped as unknown. It is retried twice and then dropped.
 * **On NeoForge the channels are registered as optional**, because the other end is a Paper
   server rather than a NeoForge one. A required payload would refuse the connection outright.
-* **The panel needs elbow room**: it is skipped on screens narrower than 420 scaled pixels
-  rather than drawn over the crafting GUI.
+* **The panel needs elbow room**: it keeps to the space left of the crafting window and of an
+  open recipe book (JEI says where they are), narrows to fit, and is skipped rather than drawn
+  over either when there is no room for at least three columns. Without JEI running it falls
+  back to needing a screen 420 scaled pixels wide. Whenever it cannot be shown, the server is
+  told, and the phantom slots come back. The mouse wheel scrolls it when there are more item
+  types than fit.

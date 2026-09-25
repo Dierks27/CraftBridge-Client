@@ -57,6 +57,8 @@ public final class CraftBridgeClientFabric implements ClientModInitializer {
                     !StoragePanel.release(released, event.button()));
             ScreenMouseEvents.allowMouseDrag(screen).register((dragged, event, horizontal, vertical) ->
                     !StoragePanel.dragging(dragged, event.button()));
+            ScreenMouseEvents.allowMouseScroll(screen).register((scrolled, mouseX, mouseY, horizontal, vertical) ->
+                    !StoragePanel.scroll(scrolled, mouseX, mouseY, vertical));
         });
     }
 
