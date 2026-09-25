@@ -23,11 +23,11 @@ import java.util.Locale;
  * has arrived. The catalog is therefore written down as it arrives and read back whenever JEI
  * loads its plugins, per server.
  *
- * <p>That makes the file one catalog behind: JEI's starts on joining read what the previous
- * session's hello stored. An item created after that hello reaches JEI only at a JEI start
- * after the next join's hello, so in practice after two rejoins, or one rejoin and anything that
- * restarts JEI. A resource reload (F3+T) does not: it rebuilds JEI's ingredient list without
- * re-running its plugins, so nothing here is re-read.
+ * <p>That makes the file one catalog behind at JEI's starts on joining: they read what the
+ * previous session's hello stored. So when a catalog arrives with items JEI was not given, JEI
+ * is restarted to read it again ({@link com.dierks.craftbridge.client.jei.JeiRestart}). A
+ * resource reload (F3+T) would not do: it rebuilds JEI's ingredient list without re-running its
+ * plugins, so nothing here is re-read.
  */
 public final class CatalogCache {
 

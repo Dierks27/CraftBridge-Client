@@ -1,5 +1,6 @@
 package com.dierks.craftbridge.client;
 
+import com.dierks.craftbridge.client.jei.JeiRestart;
 import com.dierks.craftbridge.link.LinkProtocol;
 import com.dierks.craftbridge.link.SnapshotTracker;
 import com.dierks.craftbridge.link.VarInts;
@@ -116,6 +117,7 @@ public final class CraftBridgeClient {
         storageFailures = 0;
         storage.clear();
         catalog = List.of();
+        JeiRestart.forget();
         helloAttemptsLeft = 0;
         failAllPending("disconnected");
     }
@@ -293,6 +295,10 @@ public final class CraftBridgeClient {
         LOGGER.info("CraftBridge: item catalog, {} bytes, {} custom item(s): {}",
                 payload.length, catalog.size(), describe(catalog));
         CatalogCache.store(payload, catalog.size());
+        RegistryAccess registries = ClientRegistries.current();
+        if (registries != null) {
+            JeiRestart.catalogArrived(CatalogCache.decode(catalog, registries));
+        }
     }
 
     /** The first few names in a catalog, so the log says what arrived and not only how much. */
@@ -365,6 +371,7 @@ public final class CraftBridgeClient {
     /** Called every client tick, so a request the server never answers cannot hang JEI. */
     public void clientTick() {
         tick++;
+        JeiRestart.tick();
         if (sender != null && pluginVersion == null && helloAttemptsLeft > 0 && tick - nextHelloTick >= 0) {
             helloAttemptsLeft--;
             nextHelloTick = tick + HELLO_RETRY_TICKS;

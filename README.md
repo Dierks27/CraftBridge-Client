@@ -102,14 +102,17 @@ is in `common/`.
 
 ## Notes
 
-* **How the item catalog reaches JEI.** JEI decides its item list and its subtypes when it loads
-  its plugins, and on joining it does that before the server has answered the hello, so before
-  the catalog has arrived. The catalog is written to `config/craftbridge-client/<server>.catalog`
-  as it arrives and read back whenever JEI loads its plugins, so JEI is always one catalog
-  behind: a custom item created after your last join's hello gets its own tile after two
-  rejoins, or after one rejoin and anything that restarts JEI (on Fabric, `/craftbridge jei
-  resync` or saving any recipe). A resource reload (F3+T) is not enough: it rebuilds JEI's
-  ingredient filter without re-running its plugins, so the catalog is not re-read.
+* **How custom items reach JEI.** JEI decides its item list and its subtypes when it loads its
+  plugins, and on joining it does that before the server has answered the hello, so before the
+  catalog has arrived. The catalog is written to `config/craftbridge-client/<server>.catalog`
+  as it arrives and read back whenever JEI loads its plugins. When a catalog arrives that lists
+  items JEI was not given, the mod restarts JEI a couple of seconds later (not while JEI's
+  recipe screen is open) so they get their tiles without a rejoin. That restart uses JEI's
+  internal `restartJei` hook, because JEI's API has none; if it ever fails, the log says so and
+  a rejoin does the same job. On Fabric the results of the server's own recipes are used as
+  well: they arrive with the recipes, so a recipe an admin saves mid-session brings its custom
+  item along. A resource reload (F3+T) does not help: it rebuilds JEI's ingredient filter
+  without re-running its plugins, so the catalog is not re-read.
 * **The hello is sent a second after joining, not on the join tick.** A Bukkit server announces
   the channels its plugins listen on shortly after the player joins; a message sent before that
   announcement can be dropped as unknown. It is retried twice and then dropped.
