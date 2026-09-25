@@ -67,6 +67,11 @@ public final class StoragePanel {
     public static void render(Screen screen, GuiGraphicsExtractor graphics) {
         Layout layout = layout(screen);
         if (layout == null) {
+            if (wanted(screen)) {
+                // There is something to show and nowhere to show it. If the server was told the
+                // panel is up, it now hears otherwise and puts the phantom slots back.
+                CraftBridgeClient.get().panelHidden();
+            }
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
@@ -185,19 +190,18 @@ public final class StoragePanel {
         return layout.gridTop() + (index / COLUMNS) * CELL;
     }
 
-    /** Null when this screen should not have a panel on it. */
-    private static Layout layout(Screen screen) {
-        if (!(screen instanceof AbstractContainerScreen<?>) || screen.width < MIN_SCREEN_WIDTH) {
-            return null;
-        }
+    /** Whether this screen would have a panel on it, given the room. */
+    private static boolean wanted(Screen screen) {
         CraftBridgeClient link = CraftBridgeClient.get();
-        if (!link.sessionLive()) {
+        return screen instanceof AbstractContainerScreen<?> && link.sessionLive() && !link.storage().isEmpty();
+    }
+
+    /** Null when this screen should not have a panel on it, or has no room for one. */
+    private static Layout layout(Screen screen) {
+        if (!wanted(screen) || screen.width < MIN_SCREEN_WIDTH) {
             return null;
         }
-        List<StorageView.Held> held = sorted(link.storage());
-        if (held.isEmpty()) {
-            return null;
-        }
+        List<StorageView.Held> held = sorted(CraftBridgeClient.get().storage());
         Font font = Minecraft.getInstance().font;
         int headerHeight = font.lineHeight + PADDING;
         int available = screen.height - MARGIN * 2 - headerHeight - PADDING * 2;

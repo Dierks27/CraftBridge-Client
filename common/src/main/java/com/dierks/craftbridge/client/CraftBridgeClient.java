@@ -2,6 +2,7 @@ package com.dierks.craftbridge.client;
 
 import com.dierks.craftbridge.link.LinkProtocol;
 import com.dierks.craftbridge.link.SnapshotTracker;
+import com.dierks.craftbridge.link.VarInts;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.RegistryAccess;
 import org.slf4j.Logger;
@@ -29,6 +30,12 @@ public final class CraftBridgeClient {
     private static final int FIRST_HELLO_TICKS = 20;
     private static final int HELLO_RETRY_TICKS = 60;
     private static final int HELLO_ATTEMPTS = 3;
+    /**
+     * Storage messages in a row this client may fail to read, each answered with a request for
+     * a fresh snapshot, before it stops asking for this session rather than loop on a message
+     * it will never be able to read.
+     */
+    private static final int STORAGE_FAILURES_BEFORE_GIVING_UP = 3;
 
     private static final CraftBridgeClient INSTANCE = new CraftBridgeClient();
 
@@ -60,6 +67,7 @@ public final class CraftBridgeClient {
     private int nextHelloTick;
     /** Set once the panel has drawn and the server has been told; reset when the view goes away. */
     private boolean drawnAcked;
+    private int storageFailures;
     private List<LinkProtocol.CatalogEntry> catalog = List.of();
 
     private CraftBridgeClient() {
@@ -88,12 +96,24 @@ public final class CraftBridgeClient {
         forget();
     }
 
+    /**
+     * Stop talking to this server for the rest of the connection: it speaks a protocol version
+     * this client does not. If the server had been told the panel is showing, it is told first
+     * that it is not, so it gives the player back the phantom slots instead of leaving them with
+     * neither.
+     */
+    private void goDormant() {
+        panelHidden();
+        forget();
+    }
+
     private void forget() {
         sender = null;
         pluginVersion = null;
         phantomSlotsOff = false;
         sessionLive = false;
         drawnAcked = false;
+        storageFailures = 0;
         storage.clear();
         catalog = List.of();
         helloAttemptsLeft = 0;
@@ -124,11 +144,23 @@ public final class CraftBridgeClient {
     // ---- incoming --------------------------------------------------------------------
 
     /**
-     * One entry point for every channel, so a payload this version cannot read — an older or
-     * newer plugin, a truncated message — puts the mod back to sleep instead of throwing into
-     * the client's packet handling.
+     * One entry point for every channel, so a payload this version cannot read never throws
+     * into the client's packet handling.
+     *
+     * <p>Only a plugin that speaks another protocol version puts the mod to sleep: nothing it
+     * sends can be trusted to mean what this side thinks. Any other message that fails to read
+     * — one odd item, a truncated payload — costs that message and nothing more. A storage
+     * message is then asked for again as a fresh snapshot, because the view has missed an
+     * update, and the link stays up.
      */
     public void receive(String channel, byte[] payload) {
+        int version = versionOf(payload);
+        if (version >= 0 && version != LinkProtocol.VERSION) {
+            LOGGER.warn("CraftBridge: the server speaks link protocol version {} on {}, this client {};"
+                    + " going dormant. Update whichever is older.", version, channel, LinkProtocol.VERSION);
+            goDormant();
+            return;
+        }
         try {
             switch (channel) {
                 case LinkProtocol.CHANNEL_HELLO -> onServerHello(LinkProtocol.decodeServerHello(payload));
@@ -140,9 +172,39 @@ public final class CraftBridgeClient {
                 default -> LOGGER.debug("CraftBridge: ignoring unknown channel {}", channel);
             }
         } catch (RuntimeException e) {
-            LOGGER.warn("CraftBridge: could not read a {} payload, going dormant: {}", channel, e.toString());
-            forget();
+            LOGGER.warn("CraftBridge: could not read a {} payload, dropping it: {}", channel, e.toString());
+            if (LinkProtocol.CHANNEL_STORAGE.equals(channel)) {
+                storageUnreadable();
+            }
         }
+    }
+
+    /** The protocol version a payload starts with, or -1 when there is not even that. */
+    private static int versionOf(byte[] payload) {
+        try {
+            return new VarInts.Reader(payload).readVarInt();
+        } catch (RuntimeException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * A storage message could not be read, so the view has missed an update. Ask for the whole
+     * thing again — a few times. A server that keeps sending something this client cannot read
+     * would otherwise be asked forever; after that the panel is put away for this session and
+     * the server is told, so the player falls back to the phantom slots.
+     */
+    private void storageUnreadable() {
+        storageFailures++;
+        if (storageFailures <= STORAGE_FAILURES_BEFORE_GIVING_UP) {
+            requestResync();
+            return;
+        }
+        LOGGER.warn("CraftBridge: {} storage messages in a row could not be read; not showing storage"
+                + " for this session", storageFailures);
+        panelHidden();
+        sessionLive = false;
+        storage.clear();
     }
 
     private void onServerHello(LinkProtocol.ServerHello hello) {
@@ -170,6 +232,7 @@ public final class CraftBridgeClient {
         }
         storage.rebuild(tracker.counts(), registries);
         sessionLive = true;
+        storageFailures = 0;
         LOGGER.info("CraftBridge: {} item type(s) in range", storage.all().size());
     }
 
@@ -191,10 +254,29 @@ public final class CraftBridgeClient {
         LOGGER.info("CraftBridge: storage panel is drawing; told the server it can drop the phantom slots");
     }
 
+    /**
+     * Called by the storage panel when it has been drawing and now cannot: the screen became
+     * too narrow, or something else took the room it needs.
+     *
+     * <p>The server took the phantom slots away because the panel was showing. If it is not
+     * showing any more, the server hears that too and gives them back, so the player is never
+     * left seeing neither. The panel says it is drawing again whenever it next draws a frame.
+     */
+    public void panelHidden() {
+        if (!drawnAcked) {
+            return;
+        }
+        drawnAcked = false;
+        send(LinkProtocol.CHANNEL_STORAGE_ACK,
+                LinkProtocol.encode(new LinkProtocol.StorageAck(tracker.sequence(), false)));
+        LOGGER.info("CraftBridge: storage panel can no longer be shown; told the server to keep the phantom slots");
+    }
+
     private void onSessionEnd(LinkProtocol.SessionEnd end) {
         LOGGER.info("CraftBridge: storage view closed ({})", end.reason());
         sessionLive = false;
         drawnAcked = false;
+        storageFailures = 0;
         storage.clear();
         failAllPending(end.reason());
     }
