@@ -25,7 +25,7 @@ uninstalled. It has no items, no blocks, no keybinds of its own and no config.
 | Server | CraftBridge 0.14+ (link protocol 3) | CraftBridge 0.14+ on Paper 26.3 (link protocol 3) |
 
 Every target is built from the same sources; download the jar whose name matches your
-Minecraft version and loader, e.g. `craftbridge-client-26.3-fabric-0.3.0.jar`.
+Minecraft version and loader, e.g. `craftbridge-client-26.3-fabric-0.4.0.jar`.
 
 ## What it does
 

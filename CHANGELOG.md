@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.4.0
+
+**Needs CraftBridge 0.14.0 on the server.** The link is now protocol version 3. On a 0.13 server
+the mod says so once in chat and stays out of the way (phantom slots keep working).
+
+### New
+
+* **Choose how many to craft.** Over JEI's [+], scroll the mouse wheel to pick a count (shift
+  steps by 8); the tooltip shows it and the next left-click fills the grid for that many. Right-click
+  [+] to type a number or pick 1, 8, 16, 64, Max or **All but one**, which leaves one of every
+  ingredient in storage.
+* **Middle-click sort.** Middle-click (your pick-block button) over a container or your inventory
+  sorts it, when the server allows it and you have it on in `/sort settings`. Not in creative.
+* **Storage panel at the Combo Chest.** The panel now also appears beside an open Combo Chest.
+* **Custom items show up in JEI right away.** A new custom item gets its JEI tile without
+  rejoining: JEI restarts itself when the server's catalog brings new items, and on Fabric the
+  items are also read from the server's synced recipes, so they no longer land on the base item's
+  page (the "Sweet Berry Soup under beetroot soup" case).
+
+### Fixed
+
+* Clicking the storage panel with an item on the cursor could drop that item on the ground.
+* Middle and side mouse buttons acted as a left-click on the panel.
+* The panel lost its link after one unreadable message, and a hidden panel could leave the player
+  with neither panel nor phantom slots.
+* The panel scrolls now (mouse wheel) instead of cutting off item types, and keeps clear of an open
+  recipe book.
+* [+] was red when nothing was in range even if the player's own inventory had everything, counted
+  worn armour and the offhand, and ignored damaged, enchanted or renamed items that the server
+  would accept.
+* NeoForge: in singleplayer or LAN, the integrated server handled the client's own hello.
+* Better log lines for what the item catalog holds, and one bad entry no longer drops the rest.
+
 ## 0.3.0
 
 **Minecraft 26.3 support.** The mod now builds for Minecraft 26.2 and 26.3 from the same
